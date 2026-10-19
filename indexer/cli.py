@@ -1,0 +1,105 @@
+"""Command line interface: ``bin/indexer <tool_name> --params`` (index.md section 4)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+from . import __version__
+
+
+def _tools(root: str):
+    from .query import CodebaseTools
+    return CodebaseTools(root)
+
+
+def _emit(data, text: str, as_json: bool) -> None:
+    print(json.dumps(data, ensure_ascii=False, indent=2) if as_json else text)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="indexer", description="Local codebase indexer & context provider")
+    p.add_argument("--root", default=os.environ.get("INDEXER_ROOT", os.getcwd()), help="project root (default: cwd)")
+    p.add_argument("--json", action="store_true", help="print JSON instead of compact text")
+    p.add_argument("--version", action="version", version=__version__)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("index", help="build / incrementally refresh the index")
+    s.add_argument("--force", action="store_true", help="re-index every file")
+
+    s = sub.add_parser("search", aliases=["codebase_semantic_search"], help="hybrid semantic search")
+    s.add_argument("query", nargs="?")
+    s.add_argument("--query", dest="query_opt")
+    s.add_argument("--limit", type=int, default=5)
+
+    s = sub.add_parser("relations", aliases=["codebase_get_symbol_relations"], help="symbol dependency graph")
+    s.add_argument("symbol", nargs="?")
+    s.add_argument("--symbol_name", dest="symbol_opt")
+    s.add_argument("--direction", "--relation_direction", dest="direction", default="both",
+                   choices=["upstream", "downstream", "both"])
+
+    s = sub.add_parser("context", aliases=["slice", "codebase_get_optimized_context"],
+                       help="extract only the needed lines of a file")
+    s.add_argument("file", nargs="?")
+    s.add_argument("--file_path", dest="file_opt")
+    s.add_argument("--lines", "--focus_lines", dest="lines", nargs="+", type=int, required=True)
+    s.add_argument("--padding", "--padding_lines", dest="padding", type=int, default=15)
+
+    sub.add_parser("stats", help="show index statistics")
+    sub.add_parser("serve", help="run as MCP server over stdio (JSON-RPC)")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    root = os.path.abspath(args.root)
+
+    if args.cmd == "serve":
+        from .mcp_server import serve
+        return serve(root)
+
+    from .query import render_context, render_relations, render_search
+
+    try:
+        t = _tools(root)
+        if args.cmd == "index":
+            st = t.refresh(force=args.force).as_dict()
+            text = (f'indexed {st["scanned"]} files: +{st["added"]} ~{st["updated"]} ={st["unchanged"]} '
+                    f'-{st["deleted"]} (skipped {st["skipped"]}); {st["symbols"]} symbols, {st["chunks"]} chunks')
+            if st["warnings"]:
+                text += "\nwarnings:\n  " + "\n  ".join(st["warnings"][:20])
+            _emit(st, text, args.json)
+        elif args.cmd in ("search", "codebase_semantic_search"):
+            q = args.query_opt or args.query
+            if not q:
+                print("error: a query is required", file=sys.stderr)
+                return 2
+            res = t.semantic_search(q, args.limit)
+            _emit(res, render_search(res), args.json)
+        elif args.cmd in ("relations", "codebase_get_symbol_relations"):
+            sym = args.symbol_opt or args.symbol
+            if not sym:
+                print("error: a symbol name is required", file=sys.stderr)
+                return 2
+            res = t.symbol_relations(sym, args.direction)
+            _emit(res, render_relations(res), args.json)
+        elif args.cmd in ("context", "slice", "codebase_get_optimized_context"):
+            f = args.file_opt or args.file
+            if not f:
+                print("error: a file path is required", file=sys.stderr)
+                return 2
+            res = t.optimized_context(f, args.lines, args.padding)
+            _emit(res, render_context(res), args.json)
+        elif args.cmd == "stats":
+            st = t.stats()
+            _emit(st, "\n".join(f"{k}: {v}" for k, v in st.items()), args.json)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

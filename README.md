@@ -1,1 +1,57 @@
-# test123
+# Local Codebase Indexer
+
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+
+A local codebase indexer and context provider for AI coding assistants (Claude Code via MCP, GitHub Copilot / Codex via CLI). It helps them navigate large legacy codebases with far fewer tokens. Everything is stored in `.ai_context/indexer.db` inside your project, with no cloud services involved. The design follows [`index.md`](index.md).
+
+## Install
+
+```bash
+pip install -r requirements.txt   # Python 3.10+
+```
+
+## Usage (CLI)
+
+```bash
+bin/indexer --root <project> index                       # build / incrementally refresh the index (--force rebuilds all)
+bin/indexer search "database mapping for LotNo" --limit 5
+bin/indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
+bin/indexer context Services/LotService.cs --lines 120 --padding 15   # alias: slice
+bin/indexer stats
+```
+
+- Without `--root` the current directory is used; `INDEXER_ROOT` also works.
+- Put `--json` before the subcommand to get JSON output.
+- `search`, `relations` and `context` run an incremental refresh first (mtime check, then md5 only when mtime changed).
+- The tool names from the spec also work as subcommands: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context` (options `--query`, `--symbol_name --relation_direction`, `--file_path --focus_lines --padding_lines`).
+
+## Usage (Claude Code / MCP)
+
+```bash
+claude mcp add local-indexer -- python /path/to/local-codebase-indexer/bin/indexer --root /path/to/project serve
+```
+
+`serve` speaks JSON-RPC (MCP) over stdio and exposes three tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`.
+
+## Three-layer index
+
+| Layer | Implementation |
+|---|---|
+| Syntactic | tree-sitter for C#, Python, JavaScript, TypeScript/TSX; regex for SQL (PROCEDURE / VIEW / FUNCTION / TABLE); other text files (VB6 `.frm`, `.config`, `.md`, ...) are split into windowed chunks |
+| Topology | `using` / `import` resolved to file dependencies, inheritance (base lists) and type usage (`invocation`), stored in the `dependencies` table |
+| Semantic | 384-dim chunk embeddings in `vss_chunks`; queries fuse FTS5 keyword, symbol-name and vector rankings with Reciprocal Rank Fusion, then expand to the dependency neighbours of the top 3 files |
+
+Encodings: UTF-8 first, then Big5, then cp1252. Files over 5MB are skipped. Root and nested `.gitignore` files are respected, and `.git`, `bin`, `obj`, `node_modules` and similar directories are always skipped.
+
+## Differences from the spec
+
+- **Vector storage**: `sqlite-vss` needs a native extension and is no longer maintained, so `vss_chunks` stores float32 BLOBs and cosine similarity is computed with numpy. No extension to install.
+- **Embedding model**: the default is a built-in hashing embedder (identifier sub-words, bigrams, CJK character bigrams). It is fast and reproducible but **does not understand synonyms**. For real transformer embeddings, export `all-MiniLM-L6-v2` or `bge-small-en-v1.5` to ONNX, install `onnxruntime` and `tokenizers`, and set `INDEXER_ONNX_MODEL=<folder with model.onnx and tokenizer.json>` (this path has not been tested on real hardware yet). Switching embedders triggers a full re-index.
+- **Usage relations** are identifier-name matches without type resolution, so same-named classes or methods can be mixed together. Inheritance edges come from the AST and are reliable.
+- Extra schema additions: `symbols.qualified_name`, `chunk_metadata.symbol_id`, and the `raw_refs`, `chunks_fts` and `meta` tables.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
