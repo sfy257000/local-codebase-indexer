@@ -18,6 +18,7 @@ bin/indexer search "database mapping for LotNo" --limit 5
 bin/indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
 bin/indexer context Services/LotService.cs --lines 120 --padding 15   # 别名：slice
 bin/indexer stats
+bin/indexer status                                       # 索引是否新鲜、失败文件、git commit、一致性检查
 ```
 
 - 不指定 `--root` 时使用当前目录，也可用环境变量 `INDEXER_ROOT`。
@@ -46,9 +47,17 @@ claude mcp add local-indexer -- python /path/to/local-codebase-indexer/bin/index
 ## 与规格的差异
 
 - **向量存储**：规格中的 `sqlite-vss` 需要原生扩展且已停止维护，这里 `vss_chunks` 改为存 float32 BLOB，用 numpy 暴力计算 cosine，不需要额外安装扩展。
-- **嵌入模型**：默认是内置的 hashing 嵌入（标识符拆词、双词组、中文双字），快速、可复现，但**不理解同义词**。要使用真正的 transformer，把 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 导出为 ONNX，安装 `onnxruntime`、`tokenizers`，并设置 `INDEXER_ONNX_MODEL=<包含 model.onnx 与 tokenizer.json 的文件夹>`（此路径目前没有实机验证）。切换嵌入后会自动重建索引。
+- **嵌入模型**：默认是内置的 hashing 嵌入（标识符拆词、双词组、中文双字），快速、可复现，但**不理解同义词**。要使用真正的 transformer，把 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 导出为 ONNX，安装 `onnxruntime`、`tokenizers`，并设置 `INDEXER_ONNX_MODEL=<包含 model.onnx 与 tokenizer.json 的文件夹>`（加载、补齐、池化与重建索引的逻辑已用一个小型合成模型测试过；真实模型的检索质量尚未度量，设置好变量后请运行 `python benchmarks/run_benchmark.py --compare benchmarks/baseline.json` 验证；目前使用平均池化，适合 MiniLM，bge 系列建议使用 CLS 池化）。切换嵌入后会自动重建索引。
 - **使用关系**是标识符名称匹配，不做类型解析；同名类、方法可能混在一起。继承关系则来自 AST。
 - 额外增加了 `symbols.qualified_name`、`chunk_metadata.symbol_id`、`raw_refs`、`chunks_fts` 与 `meta` 表。
+
+## 索引健康状态
+
+`status`（也是 MCP 工具 `codebase_index_status`）不更新索引，只报告索引是否可信：`fresh`（新鲜）、`stale`（文件有变更或 git HEAD 已移动）、`degraded`（有解析失败的文件或数据库不一致）、`not_indexed`（尚未建立）。解析失败的文件会从索引移除、连同错误原因列出，并在每次更新时重试，所以搜索不会返回它的过期内容。`index --force` 可全部重建。
+
+## 基准测试
+
+`python benchmarks/run_benchmark.py` 用固定问题度量 Recall@5、Recall@10 与 MRR，详见 [`benchmarks/README.md`](benchmarks/README.md)（英文）。
 
 ## 测试
 

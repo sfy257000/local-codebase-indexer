@@ -1,0 +1,142 @@
+{
+ "suite": "stdlib",
+ "corpus": "python-stdlib:email,json,http,asyncio,unittest",
+ "queries": [
+  {
+   "category": "stdlib",
+   "query": "parse a json string into python objects",
+   "relevant": [
+    {
+     "file": "json/__init__.py",
+     "symbol": "loads"
+    },
+    {
+     "file": "json/decoder.py",
+     "symbol": "JSONDecoder.decode"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "serialize python objects to a json string with indentation",
+   "relevant": [
+    {
+     "file": "json/__init__.py",
+     "symbol": "dumps"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "send the http response status line and headers",
+   "relevant": [
+    {
+     "file": "http/server.py",
+     "symbol": "BaseHTTPRequestHandler.send_response"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "serve static files from a directory over http",
+   "relevant": [
+    {
+     "file": "http/server.py",
+     "symbol": "SimpleHTTPRequestHandler.send_head"
+    },
+    {
+     "file": "http/server.py",
+     "symbol": "SimpleHTTPRequestHandler.do_GET"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "parse an email message from a string",
+   "relevant": [
+    {
+     "file": "email/__init__.py",
+     "symbol": "message_from_string"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "convert an email date header to a datetime",
+   "relevant": [
+    {
+     "file": "email/utils.py",
+     "symbol": "parsedate_to_datetime"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "format an email address with a display name",
+   "relevant": [
+    {
+     "file": "email/utils.py",
+     "symbol": "formataddr"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "run a coroutine until it finishes",
+   "relevant": [
+    {
+     "file": "asyncio/runners.py",
+     "symbol": "run"
+    },
+    {
+     "file": "asyncio/base_events.py",
+     "symbol": "BaseEventLoop.run_until_complete"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "wrap a coroutine in a task and schedule it",
+   "relevant": [
+    {
+     "file": "asyncio/tasks.py",
+     "symbol": "create_task"
+    },
+    {
+     "file": "asyncio/base_events.py",
+     "symbol": "BaseEventLoop.create_task"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "skip a test unconditionally",
+   "relevant": [
+    {
+     "file": "unittest/case.py",
+     "symbol": "skip"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "assert that two values are equal in a test case",
+   "relevant": [
+    {
+     "file": "unittest/case.py",
+     "symbol": "TestCase.assertEqual"
+    }
+   ]
+  },
+  {
+   "category": "stdlib",
+   "query": "assert that a block of code raises an exception",
+   "relevant": [
+    {
+     "file": "unittest/case.py",
+     "symbol": "TestCase.assertRaises"
+    }
+   ]
+  }
+ ]
+}

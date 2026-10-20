@@ -80,7 +80,17 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- Files that could not be indexed on the last attempt. They are retried on every update.
+CREATE TABLE IF NOT EXISTS index_failures (
+    file_path TEXT PRIMARY KEY,
+    error TEXT NOT NULL,
+    failed_at INTEGER NOT NULL
+);
 """
+
+# Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
+INDEX_VERSION = "3"
 
 
 def index_dir(root: str) -> str:
@@ -120,5 +130,6 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 
 def clear_all(conn: sqlite3.Connection) -> None:
-    for t in ("files", "symbols", "dependencies", "raw_refs", "chunk_metadata", "vss_chunks", "chunks_fts"):
+    for t in ("files", "symbols", "dependencies", "raw_refs", "chunk_metadata", "vss_chunks", "chunks_fts",
+              "index_failures"):
         conn.execute(f"DELETE FROM {t}")

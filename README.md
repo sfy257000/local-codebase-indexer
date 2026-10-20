@@ -18,6 +18,7 @@ bin/indexer search "database mapping for LotNo" --limit 5
 bin/indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
 bin/indexer context Services/LotService.cs --lines 120 --padding 15   # alias: slice
 bin/indexer stats
+bin/indexer status                                       # is the index fresh? failed files, git commit, consistency checks
 ```
 
 - Without `--root` the current directory is used; `INDEXER_ROOT` also works.
@@ -46,9 +47,17 @@ Encodings: UTF-8 first, then Big5, then cp1252. Files over 5MB are skipped. Root
 ## Differences from the spec
 
 - **Vector storage**: `sqlite-vss` needs a native extension and is no longer maintained, so `vss_chunks` stores float32 BLOBs and cosine similarity is computed with numpy. No extension to install.
-- **Embedding model**: the default is a built-in hashing embedder (identifier sub-words, bigrams, CJK character bigrams). It is fast and reproducible but **does not understand synonyms**. For real transformer embeddings, export `all-MiniLM-L6-v2` or `bge-small-en-v1.5` to ONNX, install `onnxruntime` and `tokenizers`, and set `INDEXER_ONNX_MODEL=<folder with model.onnx and tokenizer.json>` (this path has not been tested on real hardware yet). Switching embedders triggers a full re-index.
+- **Embedding model**: the default is a built-in hashing embedder (identifier sub-words, bigrams, CJK character bigrams). It is fast and reproducible but **does not understand synonyms**. For real transformer embeddings, export `all-MiniLM-L6-v2` or `bge-small-en-v1.5` to ONNX, install `onnxruntime` and `tokenizers`, and set `INDEXER_ONNX_MODEL=<folder with model.onnx and tokenizer.json>` (the loading, padding, pooling and re-index logic is covered by a test with a tiny synthetic model; retrieval quality with a real model has not been measured, so run `python benchmarks/run_benchmark.py --compare benchmarks/baseline.json` with the variable set to check it; mean pooling suits MiniLM, bge models recommend CLS pooling). Switching embedders triggers a full re-index.
 - **Usage relations** are identifier-name matches without type resolution, so same-named classes or methods can be mixed together. Inheritance edges come from the AST and are reliable.
 - Extra schema additions: `symbols.qualified_name`, `chunk_metadata.symbol_id`, and the `raw_refs`, `chunks_fts` and `meta` tables.
+
+## Index health
+
+`status` (also the MCP tool `codebase_index_status`) reports whether the index can be trusted without refreshing it: `fresh`, `stale` (files changed or git HEAD moved since the last update), `degraded` (failed files or an inconsistent database) or `not_indexed`. A file that fails to parse is removed from the index, listed with its error, and retried on every update, so search never returns stale lines for it. `index --force` rebuilds everything.
+
+## Benchmark
+
+`python benchmarks/run_benchmark.py` measures Recall@5, Recall@10 and MRR on fixed queries. See [`benchmarks/README.md`](benchmarks/README.md).
 
 ## Tests
 

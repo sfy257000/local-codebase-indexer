@@ -6,7 +6,7 @@ import json
 import sys
 
 from . import __version__
-from .query import CodebaseTools, render_context, render_relations, render_search
+from .query import CodebaseTools, render_context, render_relations, render_search, render_status
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -48,6 +48,11 @@ TOOLS = [
             "required": ["file_path", "focus_lines"],
         },
     },
+    {
+        "name": "codebase_index_status",
+        "description": "Report whether the index can be trusted: freshness, git commit it was built from, files that failed to index, and consistency checks. Does not refresh the index.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -58,6 +63,8 @@ def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
         return render_relations(tools.symbol_relations(args["symbol_name"], args.get("relation_direction", "both")))
     if name == "codebase_get_optimized_context":
         return render_context(tools.optimized_context(args["file_path"], args["focus_lines"], args.get("padding_lines", 15)))
+    if name == "codebase_index_status":
+        return render_status(tools.index_status())
     raise KeyError(f"unknown tool: {name}")
 
 

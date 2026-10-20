@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--padding", "--padding_lines", dest="padding", type=int, default=15)
 
     sub.add_parser("stats", help="show index statistics")
+    sub.add_parser("status", aliases=["codebase_index_status"], help="index health: freshness, failures, consistency")
     sub.add_parser("serve", help="run as MCP server over stdio (JSON-RPC)")
     return p
 
@@ -60,14 +61,14 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp_server import serve
         return serve(root)
 
-    from .query import render_context, render_relations, render_search
+    from .query import render_context, render_relations, render_search, render_status
 
     try:
         t = _tools(root)
         if args.cmd == "index":
             st = t.refresh(force=args.force).as_dict()
             text = (f'indexed {st["scanned"]} files: +{st["added"]} ~{st["updated"]} ={st["unchanged"]} '
-                    f'-{st["deleted"]} (skipped {st["skipped"]}); {st["symbols"]} symbols, {st["chunks"]} chunks')
+                    f'-{st["deleted"]} (skipped {st["skipped"]}, failed {st["failed"]}); {st["symbols"]} symbols, {st["chunks"]} chunks')
             if st["warnings"]:
                 text += "\nwarnings:\n  " + "\n  ".join(st["warnings"][:20])
             _emit(st, text, args.json)
@@ -92,6 +93,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             res = t.optimized_context(f, args.lines, args.padding)
             _emit(res, render_context(res), args.json)
+        elif args.cmd in ("status", "codebase_index_status"):
+            res = t.index_status()
+            _emit(res, render_status(res), args.json)
+            return 0 if res["state"] in ("fresh", "stale") else 3
         elif args.cmd == "stats":
             st = t.stats()
             _emit(st, "\n".join(f"{k}: {v}" for k, v in st.items()), args.json)

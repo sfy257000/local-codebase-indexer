@@ -1,0 +1,387 @@
+{
+ "suite": "synthetic",
+ "corpus": "corpus",
+ "queries": [
+  {
+   "category": "exact_identifier",
+   "query": "ScrapService",
+   "relevant": [
+    {
+     "file": "Services/ScrapService.cs",
+     "symbol": "ScrapService"
+    }
+   ]
+  },
+  {
+   "category": "exact_identifier",
+   "query": "usp_Lot_UpdateStatus",
+   "relevant": [
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    }
+   ]
+  },
+  {
+   "category": "exact_identifier",
+   "query": "PartNumberDecoder",
+   "relevant": [
+    {
+     "file": "Utils/PartNumberDecoder.cs"
+    }
+   ]
+  },
+  {
+   "category": "exact_identifier",
+   "query": "LabelPrinter",
+   "relevant": [
+    {
+     "file": "Printing/LabelPrinter.cs"
+    }
+   ]
+  },
+  {
+   "category": "exact_identifier",
+   "query": "frmChangeLine",
+   "relevant": [
+    {
+     "file": "Legacy/frmChangeLine.frm"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "where is the lot status changed when production is finished",
+   "relevant": [
+    {
+     "file": "Services/LotService.cs",
+     "symbol": "FinishProduction"
+    },
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "verify user password at login",
+   "relevant": [
+    {
+     "file": "Auth/LoginService.cs"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "send a barcode label to the thermal printer",
+   "relevant": [
+    {
+     "file": "Printing/LabelPrinter.cs"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "export the inspection report to a spreadsheet file",
+   "relevant": [
+    {
+     "file": "tools/export_report.py"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "map the lot entity to its database table",
+   "relevant": [
+    {
+     "file": "Data/MesDbContext.cs",
+     "symbol": "OnModelCreating"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "calculate a rolling date range for a report",
+   "relevant": [
+    {
+     "file": "Utils/DateRangeHelper.cs"
+    }
+   ]
+  },
+  {
+   "category": "natural_language",
+   "query": "database connection string",
+   "relevant": [
+    {
+     "file": "Web.config"
+    }
+   ]
+  },
+  {
+   "category": "synonym",
+   "query": "discard defective boards for good",
+   "relevant": [
+    {
+     "file": "Services/ScrapService.cs",
+     "symbol": "Save"
+    },
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "Insert"
+    }
+   ]
+  },
+  {
+   "category": "synonym",
+   "query": "validate staff sign-in secret",
+   "relevant": [
+    {
+     "file": "Auth/LoginService.cs"
+    }
+   ]
+  },
+  {
+   "category": "synonym",
+   "query": "halt the equipment when a boring bit fractures",
+   "relevant": [
+    {
+     "file": "Models/DrillBreakEvent.cs"
+    }
+   ]
+  },
+  {
+   "category": "synonym",
+   "query": "manufacturing batch state transition",
+   "relevant": [
+    {
+     "file": "Services/LotService.cs"
+    },
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    }
+   ]
+  },
+  {
+   "category": "synonym",
+   "query": "quality check success ratio",
+   "relevant": [
+    {
+     "file": "Services/InspectionService.cs",
+     "symbol": "PassRate"
+    }
+   ]
+  },
+  {
+   "category": "abbreviation",
+   "query": "SP that inserts scrap records",
+   "relevant": [
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    }
+   ]
+  },
+  {
+   "category": "abbreviation",
+   "query": "SP to change lot status",
+   "relevant": [
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    }
+   ]
+  },
+  {
+   "category": "abbreviation",
+   "query": "預存程序 新增報廢",
+   "relevant": [
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    }
+   ]
+  },
+  {
+   "category": "chinese",
+   "query": "報廢資料寫入",
+   "relevant": [
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "Insert"
+    },
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    }
+   ]
+  },
+  {
+   "category": "chinese",
+   "query": "料號解碼 層數",
+   "relevant": [
+    {
+     "file": "Utils/PartNumberDecoder.cs"
+    }
+   ]
+  },
+  {
+   "category": "chinese",
+   "query": "換線條碼解碼",
+   "relevant": [
+    {
+     "file": "Legacy/frmChangeLine.frm"
+    }
+   ]
+  },
+  {
+   "category": "chinese",
+   "query": "滾動日期區間",
+   "relevant": [
+    {
+     "file": "Utils/DateRangeHelper.cs"
+    }
+   ]
+  },
+  {
+   "category": "cross_lingual",
+   "query": "登入驗證密碼",
+   "relevant": [
+    {
+     "file": "Auth/LoginService.cs"
+    }
+   ]
+  },
+  {
+   "category": "cross_lingual",
+   "query": "標籤列印機",
+   "relevant": [
+    {
+     "file": "Printing/LabelPrinter.cs"
+    }
+   ]
+  },
+  {
+   "category": "same_name_method",
+   "query": "Save method of the scrap service",
+   "relevant": [
+    {
+     "file": "Services/ScrapService.cs",
+     "symbol": "Save"
+    }
+   ]
+  },
+  {
+   "category": "same_name_method",
+   "query": "Save lot",
+   "relevant": [
+    {
+     "file": "Services/LotService.cs",
+     "symbol": "Save"
+    }
+   ]
+  },
+  {
+   "category": "same_name_method",
+   "query": "Save inspection result",
+   "relevant": [
+    {
+     "file": "Services/InspectionService.cs",
+     "symbol": "Save"
+    }
+   ]
+  },
+  {
+   "category": "cross_file",
+   "query": "controller that calls the scrap service",
+   "relevant": [
+    {
+     "file": "Controllers/ScrapController.cs"
+    }
+   ]
+  },
+  {
+   "category": "cross_file",
+   "query": "front end code posting the scrap form to the api",
+   "relevant": [
+    {
+     "file": "Web/scrapForm.ts"
+    }
+   ]
+  },
+  {
+   "category": "cross_file",
+   "query": "which repository executes the scrap insert procedure",
+   "relevant": [
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "Insert"
+    }
+   ]
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "which stored procedure updates the MES_Lot table",
+   "relevant": [
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    }
+   ]
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "which procedure writes to MES_ScrapRecord",
+   "relevant": [
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    }
+   ]
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "what reads from MES_Lot",
+   "relevant": [
+    {
+     "file": "Repositories/LotRepository.cs"
+    },
+    {
+     "file": "Sql/usp_Inspection_Report.sql"
+    }
+   ]
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "C# code that calls usp_Scrap_Insert",
+   "relevant": [
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "Insert"
+    }
+   ]
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "what writes to MES_Lot",
+   "relevant": [
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    },
+    {
+     "file": "Repositories/LotRepository.cs",
+     "symbol": "Upsert"
+    }
+   ],
+   "note": "two writers: a stored procedure and a SQL string in C# (exhaustiveness check)"
+  },
+  {
+   "category": "sql_dataflow",
+   "query": "everything that touches the MES_ScrapRecord table",
+   "relevant": [
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    },
+    {
+     "file": "Repositories/ScrapRepository.cs"
+    },
+    {
+     "file": "Data/MesDbContext.cs"
+    }
+   ],
+   "note": "three places (exhaustiveness check)"
+  }
+ ]
+}

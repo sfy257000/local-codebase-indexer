@@ -10,7 +10,9 @@ from collections import defaultdict
 
 import numpy as np
 
-from .core import Indexer
+from . import db as dbmod
+from .core import Indexer, cjk_bigrams, git_info
+from .scanner import iter_files
 from .embedder import split_identifier
 
 RRF_K = 60
@@ -28,6 +30,9 @@ _STOPWORDS = {
 def _query_terms(query: str) -> list[str]:
     terms: list[str] = []
     for ident in re.findall(r"[A-Za-z_][A-Za-z0-9_]*|[一-鿿]+|\d+", query):
+        if not re.match(r"[A-Za-z_0-9]", ident):
+            terms.extend(cjk_bigrams(ident))  # matches the bigrams indexed in chunks_fts
+            continue
         parts = split_identifier(ident) if re.match(r"[A-Za-z_]", ident) else [ident.lower()]
         if len(parts) > 1:
             terms.append(ident.lower())
@@ -44,6 +49,8 @@ def _has_word(term: str, text: str) -> bool:
     low = text.lower()
     if term == low:
         return True
+    if not term.isascii():  # Chinese: no word boundaries, use substring
+        return term in text
     words: set[str] = set()
     for piece in re.split(r"[^A-Za-z0-9\u4e00-\u9fff]+", text):
         words.update(split_identifier(piece))
@@ -326,6 +333,87 @@ class CodebaseTools:
             "context": "\n   ...\n".join(parts),
         }
 
+    # ------------------------------------------------------------------ Tool 4
+    def index_status(self) -> dict:
+        """Report how trustworthy the index is. Never refreshes the index itself."""
+        conn = self.conn
+        meta = lambda k: dbmod.get_meta(conn, k)  # noqa: E731
+        indexed = {r["file_path"]: r["last_modified"] for r in conn.execute("SELECT file_path, last_modified FROM files")}
+
+        on_disk = {sf.rel_path: sf.mtime_ns for sf in iter_files(self.root)}
+        new = sorted(set(on_disk) - set(indexed))
+        gone = sorted(set(indexed) - set(on_disk))
+        touched = sorted(p for p in set(on_disk) & set(indexed) if on_disk[p] != indexed[p])
+        failed = [dict(file_path=r["file_path"], error=r["error"], failed_at=r["failed_at"])
+                  for r in conn.execute("SELECT * FROM index_failures ORDER BY file_path")]
+        failed_paths = {f["file_path"] for f in failed}
+        new = [p for p in new if p not in failed_paths]  # already reported as failures
+
+        git_now = git_info(self.root)
+        git_then = {"commit": meta("git_commit"), "branch": meta("git_branch"),
+                    "dirty_files": int(meta("git_dirty_files") or 0)} if meta("git_commit") else None
+        head_moved = bool(git_now and git_then and git_now["commit"] != git_then["commit"])
+
+        problems = self._consistency_problems()
+        last = meta("last_indexed_at")
+
+        outdated_format = bool(indexed) and meta("index_version") != dbmod.INDEX_VERSION
+        if not indexed and not failed:
+            state = "not_indexed"
+        elif problems or failed:
+            state = "degraded"
+        elif new or gone or touched or head_moved or outdated_format:
+            state = "stale"
+        else:
+            state = "fresh"
+
+        def cap(items):
+            return {"count": len(items), "examples": items[:10]}
+
+        return {
+            "state": state,
+            "root": self.root,
+            "embedder": meta("embedder"),
+            "index_version": meta("index_version"),
+            "index_format_outdated": outdated_format,
+            "last_indexed_at": int(last) if last else None,
+            "indexed_files": len(indexed),
+            "symbols": conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0],
+            "chunks": conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0],
+            "git": {"indexed": git_then, "current": git_now, "head_moved": head_moved},
+            "pending_changes": {
+                "new_files": cap(new), "deleted_files": cap(gone),
+                "possibly_modified_files": cap(touched),
+                "note": "modified is judged by mtime only; a touched file with identical content is re-checked by md5 on the next update",
+            },
+            "failed_files": failed,
+            "consistency": {"ok": not problems, "problems": problems},
+        }
+
+    def _consistency_problems(self) -> list[str]:
+        c = self.conn
+        one = lambda sql: c.execute(sql).fetchone()[0]  # noqa: E731
+        checks = [
+            ("chunk_metadata rows without a vector",
+             "SELECT COUNT(*) FROM chunk_metadata WHERE rowid NOT IN (SELECT rowid FROM vss_chunks)"),
+            ("vectors without chunk_metadata",
+             "SELECT COUNT(*) FROM vss_chunks WHERE rowid NOT IN (SELECT rowid FROM chunk_metadata)"),
+            ("chunk_metadata rows without a full-text entry",
+             "SELECT COUNT(*) FROM chunk_metadata WHERE rowid NOT IN (SELECT rowid FROM chunks_fts)"),
+            ("full-text entries without chunk_metadata",
+             "SELECT COUNT(*) FROM chunks_fts WHERE rowid NOT IN (SELECT rowid FROM chunk_metadata)"),
+            ("chunks of files that are not indexed",
+             "SELECT COUNT(*) FROM chunk_metadata WHERE file_path NOT IN (SELECT file_path FROM files)"),
+            ("symbols of files that are not indexed",
+             "SELECT COUNT(*) FROM symbols WHERE file_path NOT IN (SELECT file_path FROM files)"),
+            ("references of files that are not indexed",
+             "SELECT COUNT(*) FROM raw_refs WHERE file_path NOT IN (SELECT file_path FROM files)"),
+            ("dependencies pointing at files that are not indexed",
+             "SELECT COUNT(*) FROM dependencies WHERE source_path NOT IN (SELECT file_path FROM files)"
+             " OR target_path NOT IN (SELECT file_path FROM files)"),
+        ]
+        return [f"{n} {label}" for label, sql in checks if (n := one(sql))]
+
     # ------------------------------------------------------------------ misc
     def stats(self) -> dict:
         c = self.conn
@@ -393,6 +481,42 @@ def render_relations(res: dict) -> str:
                 out.append(f'    uses {u["name"]} (line {u["first_line"]})  -> {where}')
     if res.get("note"):
         out.append(f'note: {res["note"]}')
+    return "\n".join(out)
+
+
+def render_status(st: dict) -> str:
+    import datetime as _dt
+
+    when = _dt.datetime.fromtimestamp(st["last_indexed_at"]).strftime("%Y-%m-%d %H:%M:%S") if st["last_indexed_at"] else "never"
+    out = [f'index state: {st["state"].upper()}',
+           f'last indexed: {when}   files: {st["indexed_files"]}   symbols: {st["symbols"]}   chunks: {st["chunks"]}',
+           f'embedder: {st["embedder"]}   index version: {st["index_version"]}']
+    g = st["git"]
+    if g["current"] is None and g["indexed"] is None:
+        out.append("git: not a git work tree")
+    else:
+        for label, info in (("indexed at", g["indexed"]), ("current   ", g["current"])):
+            if info:
+                out.append(f'git {label}: {info["commit"][:10]} ({info["branch"] or "?"}), {info["dirty_files"]} uncommitted paths')
+        if g["head_moved"]:
+            out.append("git: HEAD has moved since the last index update")
+    pc = st["pending_changes"]
+    for key, label in (("new_files", "new"), ("deleted_files", "deleted"), ("possibly_modified_files", "possibly modified")):
+        if pc[key]["count"]:
+            more = " ..." if pc[key]["count"] > len(pc[key]["examples"]) else ""
+            out.append(f'{label} since last update ({pc[key]["count"]}): ' + ", ".join(pc[key]["examples"]) + more)
+    if st["failed_files"]:
+        out.append(f'failed files ({len(st["failed_files"])}), not searchable until fixed:')
+        out.extend(f'  {f["file_path"]}: {f["error"]}' for f in st["failed_files"][:20])
+    if st["consistency"]["ok"]:
+        out.append("consistency: ok")
+    else:
+        out.append("consistency problems (run `index --force` to rebuild):")
+        out.extend("  " + p for p in st["consistency"]["problems"])
+    if st.get("index_format_outdated"):
+        out.append("index was built by an older version and will be rebuilt on the next update")
+    if st["state"] in ("stale", "not_indexed"):
+        out.append("hint: run `bin/indexer index` (search/relations/context also refresh automatically)")
     return "\n".join(out)
 
 

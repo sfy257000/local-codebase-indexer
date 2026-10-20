@@ -163,7 +163,8 @@ def test_mcp_protocol(project):
     assert init["result"]["serverInfo"]["name"] == "local-codebase-indexer"
     assert handle(t, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     names = [x["name"] for x in handle(t, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
-    assert names == ["codebase_semantic_search", "codebase_get_symbol_relations", "codebase_get_optimized_context"]
+    assert names == ["codebase_semantic_search", "codebase_get_symbol_relations", "codebase_get_optimized_context",
+                     "codebase_index_status"]
     call = handle(t, {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
         "name": "codebase_semantic_search", "arguments": {"query": "GetLot", "limit": 2}}})
     assert call["result"]["isError"] is False and "GetLot" in call["result"]["content"][0]["text"]
@@ -180,3 +181,152 @@ def test_cli_end_to_end(project):
     out = subprocess.run([sys.executable, exe, "--root", str(root), "--json", "context", "Models/Lot.cs",
                           "--lines", "5", "--padding", "0"], capture_output=True, text=True)
     assert json.loads(out.stdout)["ranges"] == [[5, 5]]
+
+
+# ---------------------------------------------------------------------- index status / failures
+
+def _git(root, *args):
+    subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                   check=True, capture_output=True)
+
+
+def test_status_fresh_then_stale_then_deleted(project):
+    root, t = project
+    st = t.index_status()
+    assert st["state"] == "fresh" and st["consistency"]["ok"] and st["failed_files"] == []
+    assert st["git"]["current"] is None  # tmp dir is not a git repo
+
+    (root / "web/new.ts").write_text("export class N {}\n", encoding="utf-8")
+    st = t.index_status()
+    assert st["state"] == "stale" and st["pending_changes"]["new_files"]["examples"] == ["web/new.ts"]
+    assert "web/new.ts" not in {r[0] for r in t.conn.execute("SELECT file_path FROM files")}  # status never refreshes
+
+    t.refresh()
+    (root / "web/new.ts").unlink()
+    assert t.index_status()["pending_changes"]["deleted_files"]["examples"] == ["web/new.ts"]
+    t.refresh()
+    assert t.index_status()["state"] == "fresh"
+
+
+def test_failed_file_leaves_no_stale_data_and_is_retried(project, monkeypatch):
+    root, t = project
+    import indexer.core as core
+
+    real = core.parse_file
+
+    def boom(language, text, path):
+        if path == "Services/LotService.cs":
+            raise RuntimeError("parser exploded")
+        return real(language, text, path)
+
+    f = root / "Services/LotService.cs"
+    f.write_text(f.read_text(encoding="utf-8") + "\n// changed\n", encoding="utf-8")
+    monkeypatch.setattr(core, "parse_file", boom)
+    st = t.refresh()
+    assert st.failed == 1
+    # old data of the failed file is gone: search must not return it
+    assert t.conn.execute("SELECT COUNT(*) FROM chunk_metadata WHERE file_path='Services/LotService.cs'").fetchone()[0] == 0
+    assert all(r["file_path"] != "Services/LotService.cs" for r in t.semantic_search("GetLot")["results"])
+    status = t.index_status()
+    assert status["state"] == "degraded"
+    assert status["failed_files"][0]["file_path"] == "Services/LotService.cs"
+    assert "parser exploded" in status["failed_files"][0]["error"]
+    assert status["consistency"]["ok"]
+
+    t.refresh()  # still failing: still reported, retried
+    assert t.index_status()["failed_files"]
+
+    monkeypatch.setattr(core, "parse_file", real)
+    st = t.refresh()  # fixed: indexed again, failure cleared
+    assert st.failed == 0
+    status = t.index_status()
+    assert status["state"] == "fresh" and status["failed_files"] == []
+    assert any(r["file_path"] == "Services/LotService.cs" for r in t.semantic_search("GetLot")["results"])
+
+
+def test_failure_cleared_when_file_deleted(project, monkeypatch):
+    root, t = project
+    import indexer.core as core
+    monkeypatch.setattr(core, "parse_file", lambda *a: (_ for _ in ()).throw(ValueError("x")))
+    (root / "web/bad.ts").write_text("export class B {}\n", encoding="utf-8")
+    t.refresh()
+    assert [f["file_path"] for f in t.index_status()["failed_files"]] == ["web/bad.ts"]
+    (root / "web/bad.ts").unlink()
+    t.refresh()
+    assert t.index_status()["failed_files"] == []
+
+
+def test_consistency_check_detects_corruption(project):
+    _, t = project
+    t.conn.execute("DELETE FROM vss_chunks WHERE rowid=(SELECT MIN(rowid) FROM vss_chunks)")
+    t.conn.commit()
+    st = t.index_status()
+    assert st["state"] == "degraded" and not st["consistency"]["ok"]
+    assert any("without a vector" in p for p in st["consistency"]["problems"])
+    t.refresh(force=True)  # documented remedy
+    assert t.index_status()["consistency"]["ok"]
+
+
+def test_git_metadata_and_head_moved(tmp_path):
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "one")
+    t = CodebaseTools(str(tmp_path))
+    t.refresh()
+    st = t.index_status()
+    first = st["git"]["indexed"]["commit"]
+    assert len(first) == 40 and st["git"]["current"]["commit"] == first and st["state"] == "fresh"
+
+    (tmp_path / "b.py").write_text("def g():\n    return 2\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "two")
+    st = t.index_status()
+    assert st["git"]["head_moved"] and st["state"] == "stale"
+    t.refresh()
+    st = t.index_status()
+    assert st["git"]["indexed"]["commit"] != first and st["state"] == "fresh"
+    t.indexer.close()
+
+
+def test_index_version_mismatch_forces_rebuild(project):
+    root, t = project
+    t.conn.execute("UPDATE meta SET value='0' WHERE key='index_version'")
+    t.conn.commit()
+    st = t.refresh()
+    assert st.added == st.scanned and st.unchanged == 0
+
+
+def test_mcp_status_does_not_disable_auto_refresh(project):
+    root, t = project
+    handle(t, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+               "params": {"name": "codebase_index_status", "arguments": {}}})
+    (root / "web/late.ts").write_text("export class LateOne {}\n", encoding="utf-8")
+    t._fresh = False
+    res = handle(t, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                     "params": {"name": "codebase_semantic_search", "arguments": {"query": "LateOne"}}})
+    assert "web/late.ts" in res["result"]["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------- Chinese search / benchmark guard
+
+def test_chinese_query_matches_inside_a_longer_run(tmp_path):
+    (tmp_path / "a.cs").write_text("class A {\n  // 新增報廢資料，呼叫預存程序\n  void Insert() { }\n}\n", encoding="utf-8")
+    (tmp_path / "b.cs").write_text("class B {\n  // 無關的說明文字\n  void Other() { }\n}\n", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    t.refresh()
+    # none of the query's runs equals a whole run in the file: only character bigrams can match
+    res = t.semantic_search("報廢資料寫入", limit=1)
+    assert res["results"][0]["file_path"] == "a.cs"
+    t.indexer.close()
+
+
+def test_benchmark_corpus_is_valid_and_floor_holds(tmp_path):
+    out = tmp_path / "bench.json"
+    run = subprocess.run([sys.executable, os.path.join(ROOT, "benchmarks", "run_benchmark.py"),
+                          "--suite", "synthetic", "--save", str(out)], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    assert "LINT:" not in run.stdout  # synonym queries must not share words with their answers
+    cats = json.loads(out.read_text(encoding="utf-8"))["suites"]["synthetic"]["categories"]
+    assert cats["exact_identifier"]["recall5"] == 1.0
+    assert cats["chinese"]["recall5"] == 1.0

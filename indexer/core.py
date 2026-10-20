@@ -7,6 +7,8 @@ import os
 import posixpath
 import re
 import sqlite3
+import subprocess
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -27,6 +29,14 @@ def decode_bytes(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+_CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
+
+
+def cjk_bigrams(run: str) -> list[str]:
+    """Overlapping character bigrams of a Chinese run (the run itself when it is a single character)."""
+    return [run[i:i + 2] for i in range(len(run) - 1)] or [run]
+
+
 def search_text_for(header: str, body: str) -> str:
     """Text for FTS5: original tokens plus camelCase / snake_case sub-words."""
     text = header + "\n" + body
@@ -35,11 +45,36 @@ def search_text_for(header: str, body: str) -> str:
         parts = split_identifier(ident)
         if len(parts) > 1:
             extra.extend(parts)
+    # FTS5's unicode61 tokenizer keeps a whole run of Chinese characters as one token,
+    # so index overlapping character bigrams as separate words
+    for run in set(_CJK_RUN.findall(text)):
+        extra.extend(cjk_bigrams(run))
     return text + "\n" + " ".join(extra)
 
 
 def embedding_text_for(header: str, body: str) -> str:
     return (header + "\n" + body)[:2500]
+
+
+def git_info(root: str) -> dict | None:
+    """HEAD commit, branch and number of uncommitted paths; None outside a git work tree."""
+    def run(*args: str) -> str | None:
+        try:
+            r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout if r.returncode == 0 else None
+
+    head = run("rev-parse", "HEAD")
+    if head is None:
+        return None
+    branch = (run("rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+    porcelain = run("status", "--porcelain") or ""
+    return {
+        "commit": head.strip(),
+        "branch": branch,
+        "dirty_files": len([ln for ln in porcelain.splitlines() if ln.strip()]),
+    }
 
 
 @dataclass
@@ -50,6 +85,7 @@ class IndexStats:
     unchanged: int = 0
     deleted: int = 0
     skipped: int = 0
+    failed: int = 0
     chunks: int = 0
     symbols: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -73,10 +109,12 @@ class Indexer:
         stats = IndexStats()
         conn = self.conn
 
-        if dbmod.get_meta(conn, "embedder") != self.embedder.name:
-            # different embedding space (or first run): rebuild everything
+        if (dbmod.get_meta(conn, "embedder") != self.embedder.name
+                or dbmod.get_meta(conn, "index_version") != dbmod.INDEX_VERSION):
+            # different embedding space or data layout (or first run): rebuild everything
             dbmod.clear_all(conn)
             dbmod.set_meta(conn, "embedder", self.embedder.name)
+            dbmod.set_meta(conn, "index_version", dbmod.INDEX_VERSION)
             conn.commit()
 
         existing = {r["file_path"]: (r["last_modified"], r["md5_hash"]) for r in
@@ -95,7 +133,9 @@ class Indexer:
                 with open(sf.abs_path, "rb") as f:
                     data = f.read()
             except OSError as exc:
-                stats.skipped += 1
+                self._record_failure(sf.rel_path, f"{type(exc).__name__}: {exc}")
+                stats.failed += 1
+                changed = True
                 stats.warnings.append(f"{sf.rel_path}: {exc}")
                 continue
             if b"\x00" in data[:8192]:
@@ -109,7 +149,9 @@ class Indexer:
             try:
                 self._index_file(sf.rel_path, sf.language, sf.mtime_ns, md5, decode_bytes(data))
             except Exception as exc:  # one bad file must not abort the run
-                stats.skipped += 1
+                self._record_failure(sf.rel_path, f"{type(exc).__name__}: {exc}")
+                stats.failed += 1
+                changed = True
                 stats.warnings.append(f"{sf.rel_path}: {type(exc).__name__}: {exc}")
                 continue
             changed = True
@@ -123,14 +165,40 @@ class Indexer:
             stats.deleted += 1
             changed = True
 
+        # failures for files that are no longer scanned (deleted, newly ignored) are obsolete
+        conn.executemany("DELETE FROM index_failures WHERE file_path=?",
+                         [(r[0],) for r in conn.execute("SELECT file_path FROM index_failures").fetchall()
+                          if r[0] not in seen])
         if changed or force:
             resolve_dependencies(conn)
+        self._record_run_meta()
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
         stats.symbols = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
         return stats
 
     # ------------------------------------------------------------------ internals
+    def _record_run_meta(self) -> None:
+        conn = self.conn
+        dbmod.set_meta(conn, "last_indexed_at", str(int(time.time())))
+        info = git_info(self.root)
+        if info is None:
+            for k in ("git_commit", "git_branch", "git_dirty_files"):
+                conn.execute("DELETE FROM meta WHERE key=?", (k,))
+        else:
+            dbmod.set_meta(conn, "git_commit", info["commit"])
+            dbmod.set_meta(conn, "git_branch", info["branch"])
+            dbmod.set_meta(conn, "git_dirty_files", str(info["dirty_files"]))
+
+    def _record_failure(self, rel_path: str, error: str) -> None:
+        """A file that cannot be indexed must not leave its previous (now stale) data behind."""
+        with self.conn:
+            self._remove_file(rel_path)
+            self.conn.execute(
+                "INSERT OR REPLACE INTO index_failures(file_path, error, failed_at) VALUES(?,?,?)",
+                (rel_path, error[:500], int(time.time())),
+            )
+
     def _remove_file(self, rel_path: str) -> None:
         c = self.conn
         ids = [r[0] for r in c.execute("SELECT rowid FROM chunk_metadata WHERE file_path=?", (rel_path,))]
@@ -140,6 +208,7 @@ class Indexer:
         c.execute("DELETE FROM symbols WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM raw_refs WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM files WHERE file_path=?", (rel_path,))
+        c.execute("DELETE FROM index_failures WHERE file_path=?", (rel_path,))
 
     def _index_file(self, rel_path: str, language: str, mtime_ns: int, md5: str, text: str) -> None:
         parsed = parse_file(language, text, rel_path)
