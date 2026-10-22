@@ -4,6 +4,7 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 
 ## Next
 
+0. **Publish to the MCP registry** (not done yet). PyPI 0.3.0 is out and carries the `mcp-name` marker; `server.json` is ready. Run `mcp-publisher login github` then `mcp-publisher publish` from the repo folder, then verify with `curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=local-codebase-indexer"`. Repeat after each release (bump both versions in `server.json`).
 1. **Check a real embedding model on your own machine** (this environment cannot reach Hugging Face, so the ONNX path is only tested with a tiny generated model). Export a model such as `all-MiniLM-L6-v2` (mean pooling) or `bge-small-en-v1.5` (`INDEXER_ONNX_POOLING=cls`, `INDEXER_ONNX_QUERY_PREFIX="Represent this sentence for searching relevant passages: "`), set `INDEXER_ONNX_MODEL`, and run `python benchmarks/run_benchmark.py --compare benchmarks/baseline.json`.
    Evidence: `synonym` Recall@5 is only 0.30 (hashing embedder plus the dictionary, which cannot cover free paraphrase). Whether a real model fixes this is not measured.
 2. **Resolve `FROM a JOIN b ON ..., c`** (a comma list after a JOIN loses `c`), non-sink SQL proc-name literals (`Run("usp_X")`), and EF query tracing (only the table mapping is recorded now).
