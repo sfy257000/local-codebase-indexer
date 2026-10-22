@@ -58,8 +58,25 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _fix_stdio(serving: bool) -> None:
+    """MCP speaks UTF-8 JSON; the Windows locale codec (cp950, cp1252) would garble Chinese queries. On a console,
+    keep its encoding but never crash on a character it cannot show."""
+    for name in ("stdin", "stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            if serving:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            elif name != "stdin":
+                stream.reconfigure(errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _fix_stdio(serving=args.cmd == "serve")
     root = os.path.abspath(args.root)
 
     if args.cmd == "serve":

@@ -61,7 +61,7 @@ def git_info(root: str) -> dict | None:
     """HEAD commit, branch and number of uncommitted paths; None outside a git work tree."""
     def run(*args: str) -> str | None:
         try:
-            r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=15)
+            r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         except (OSError, subprocess.SubprocessError):
             return None
         return r.stdout if r.returncode == 0 else None

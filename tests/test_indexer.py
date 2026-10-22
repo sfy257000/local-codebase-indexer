@@ -330,3 +330,30 @@ def test_benchmark_corpus_is_valid_and_floor_holds(tmp_path):
     cats = json.loads(out.read_text(encoding="utf-8"))["suites"]["synthetic"]["categories"]
     assert cats["exact_identifier"]["recall5"] == 1.0
     assert cats["chinese"]["recall5"] == 1.0
+
+
+def test_git_output_is_decoded_as_utf8_not_the_locale(tmp_path, monkeypatch):
+    """On Windows the locale codec (cp950) cannot decode git's UTF-8 output and the reader thread crashed."""
+    import subprocess
+
+    import local_codebase_indexer.core as core
+    seen = {}
+    real = subprocess.run
+
+    def spy(*a, **kw):
+        seen.update(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", spy)
+    core.git_info(str(tmp_path))
+    assert seen.get("encoding") == "utf-8" and seen.get("errors") == "replace"
+
+
+def test_mcp_serve_reads_utf8_even_when_locale_is_cp950(project):
+    q = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        "name": "codebase_semantic_search", "arguments": {"query": "批號 LotNo", "limit": 2}}}, ensure_ascii=False)
+    env = dict(os.environ, PYTHONIOENCODING="cp950")
+    r = subprocess.run([sys.executable, "-m", "local_codebase_indexer", "--root", str(project), "serve"],
+                       input=(q + "\n").encode("utf-8"), capture_output=True, env=env, cwd=ROOT, timeout=60)
+    out = json.loads(r.stdout.decode("utf-8"))
+    assert "result" in out and "error" not in out, r.stderr.decode("utf-8", "replace")
