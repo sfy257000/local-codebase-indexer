@@ -85,3 +85,5 @@ Queries are expanded with a small synonym dictionary (`SP` / `預存程序` / `s
 ```bash
 python -m pytest -q
 ```
+
+<!-- mcp-name: io.github.sfy257000/local-codebase-indexer -->

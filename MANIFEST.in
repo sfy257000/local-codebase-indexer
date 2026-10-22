@@ -1,4 +1,4 @@
-include README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
+include server.json README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
 graft tests
 graft benchmarks
 prune benchmarks/__pycache__
