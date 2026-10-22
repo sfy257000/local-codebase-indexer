@@ -1,0 +1,10 @@
+# local-codebase-indexer
+
+> Local codebase indexer and context provider for AI coding assistants. MCP server and CLI, SQLite storage, no cloud. Understands C#, Python, JS/TS and T-SQL, including which code reads or writes a table or stored procedure.
+
+Install: `pip install local-codebase-indexer`, then `local-codebase-indexer --root <project> index`.
+
+- [AGENTS.md](AGENTS.md): install, commands, MCP registration, how to read confidence levels
+- [README.md](README.md): features, design, known limits
+- [TODO.md](TODO.md): planned work
+- [benchmarks/README.md](benchmarks/README.md): how search quality is measured

@@ -15,6 +15,10 @@ pipx install local-codebase-indexer
 
 From a clone: `pip install -e .` (the `bin/indexer` launcher still works in a checkout).
 
+## For AI assistants
+
+If you are an AI coding assistant asked to set this up: run `pip install local-codebase-indexer`, then `claude mcp add local-indexer -- local-codebase-indexer --root <project> serve` (Claude Code) or use the CLI commands below. Full instructions are in [`AGENTS.md`](AGENTS.md).
+
 ## Usage (CLI)
 
 ```bash
