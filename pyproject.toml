@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-codebase-indexer"
+dynamic = ["version"]
+description = "Local codebase indexer and context provider for AI coding assistants: MCP server and CLI with SQL data-access and C# call relations. No cloud, no server."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "sfy257000" }]
+keywords = [
+    "mcp", "model-context-protocol", "claude-code", "code-search", "semantic-search", "codebase-index",
+    "tree-sitter", "sqlite", "stored-procedure", "csharp", "dapper", "t-sql", "call-graph", "ai-coding-assistant",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Indexing",
+]
+dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-c-sharp",
+    "tree-sitter-python",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
+    "numpy",
+    "pathspec",
+]
+
+[project.optional-dependencies]
+onnx = ["onnxruntime", "tokenizers"]
+dev = ["pytest"]
+
+[project.scripts]
+local-codebase-indexer = "local_codebase_indexer.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sfy257000/local-codebase-indexer"
+Repository = "https://github.com/sfy257000/local-codebase-indexer"
+Issues = "https://github.com/sfy257000/local-codebase-indexer/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "local_codebase_indexer.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["local_codebase_indexer*"]

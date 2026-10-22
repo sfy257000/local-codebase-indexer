@@ -7,19 +7,24 @@ A local codebase indexer and context provider for AI coding assistants (Claude C
 ## Install
 
 ```bash
-pip install -r requirements.txt   # Python 3.10+
+pip install local-codebase-indexer              # Python 3.10+
+# or, isolated from your other packages:
+pipx install local-codebase-indexer
+# optional real embeddings (see below): pip install "local-codebase-indexer[onnx]"
 ```
+
+From a clone: `pip install -e .` (the `bin/indexer` launcher still works in a checkout).
 
 ## Usage (CLI)
 
 ```bash
-bin/indexer --root <project> index                       # build / incrementally refresh the index (--force rebuilds all)
-bin/indexer search "database mapping for LotNo" --limit 5
-bin/indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
-bin/indexer context Services/LotService.cs --lines 120 --padding 15   # alias: slice
-bin/indexer data-access MES_Lot                           # who reads / writes / executes a table or procedure; what a procedure touches
-bin/indexer stats
-bin/indexer status                                       # is the index fresh? failed files, git commit, consistency checks
+local-codebase-indexer --root <project> index                       # build / incrementally refresh the index (--force rebuilds all)
+local-codebase-indexer search "database mapping for LotNo" --limit 5
+local-codebase-indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
+local-codebase-indexer context Services/LotService.cs --lines 120 --padding 15   # alias: slice
+local-codebase-indexer data-access MES_Lot                           # who reads / writes / executes a table or procedure; what a procedure touches
+local-codebase-indexer stats
+local-codebase-indexer status                                       # is the index fresh? failed files, git commit, consistency checks
 ```
 
 - Without `--root` the current directory is used; `INDEXER_ROOT` also works.
@@ -30,7 +35,8 @@ bin/indexer status                                       # is the index fresh? f
 ## Usage (Claude Code / MCP)
 
 ```bash
-claude mcp add local-indexer -- python /path/to/local-codebase-indexer/bin/indexer --root /path/to/project serve
+claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project serve
+# without installing: claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
 `serve` speaks JSON-RPC (MCP) over stdio and exposes five tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_index_status`.
@@ -60,7 +66,7 @@ Natural-language search routes questions such as "who modifies MES_ScrapRecord" 
 
 ## Query expansion
 
-Queries are expanded with a small synonym dictionary (`SP` / `預存程序` / `stored procedure` / `usp`, table, lot, scrap, ...; `indexer/synonyms.py`). Add or disable groups per project in `.ai_context/synonyms.json`: `{"groups": [["wpnlot", "在製批"]], "disable": ["sp"]}`. This helps abbreviations and Chinese/English terms, not free paraphrase.
+Queries are expanded with a small synonym dictionary (`SP` / `預存程序` / `stored procedure` / `usp`, table, lot, scrap, ...; `local_codebase_indexer/synonyms.py`). Add or disable groups per project in `.ai_context/synonyms.json`: `{"groups": [["wpnlot", "在製批"]], "disable": ["sp"]}`. This helps abbreviations and Chinese/English terms, not free paraphrase.
 
 ## Index health
 

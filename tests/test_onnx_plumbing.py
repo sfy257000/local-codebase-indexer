@@ -17,8 +17,8 @@ tokenizers = pytest.importorskip("tokenizers")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from indexer.embedder import DIM, OnnxEmbedder, get_embedder  # noqa: E402
-from indexer.query import CodebaseTools  # noqa: E402
+from local_codebase_indexer.embedder import DIM, OnnxEmbedder, get_embedder  # noqa: E402
+from local_codebase_indexer.query import CodebaseTools  # noqa: E402
 
 
 @pytest.fixture()

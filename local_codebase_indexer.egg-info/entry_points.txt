@@ -1,0 +1,2 @@
+[console_scripts]
+local-codebase-indexer = local_codebase_indexer.cli:main

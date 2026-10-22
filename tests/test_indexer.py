@@ -8,8 +8,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from indexer.mcp_server import handle  # noqa: E402
-from indexer.query import CodebaseTools  # noqa: E402
+from local_codebase_indexer.mcp_server import handle  # noqa: E402
+from local_codebase_indexer.query import CodebaseTools  # noqa: E402
 
 FILES = {
     "Models/Lot.cs": """using System;
@@ -210,7 +210,7 @@ def test_status_fresh_then_stale_then_deleted(project):
 
 def test_failed_file_leaves_no_stale_data_and_is_retried(project, monkeypatch):
     root, t = project
-    import indexer.core as core
+    import local_codebase_indexer.core as core
 
     real = core.parse_file
 
@@ -246,7 +246,7 @@ def test_failed_file_leaves_no_stale_data_and_is_retried(project, monkeypatch):
 
 def test_failure_cleared_when_file_deleted(project, monkeypatch):
     root, t = project
-    import indexer.core as core
+    import local_codebase_indexer.core as core
     monkeypatch.setattr(core, "parse_file", lambda *a: (_ for _ in ()).throw(ValueError("x")))
     (root / "web/bad.ts").write_text("export class B {}\n", encoding="utf-8")
     t.refresh()

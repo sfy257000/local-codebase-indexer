@@ -7,19 +7,24 @@
 ## 安裝
 
 ```bash
-pip install -r requirements.txt   # Python 3.10+
+pip install local-codebase-indexer              # Python 3.10+
+# 或與其他套件隔離安裝：
+pipx install local-codebase-indexer
+# 選用：真正的嵌入模型（見下文）pip install "local-codebase-indexer[onnx]"
 ```
+
+從原始碼：`pip install -e .`（在 clone 下 `bin/indexer` 仍可使用）。
 
 ## 使用（CLI）
 
 ```bash
-bin/indexer --root <專案路徑> index                      # 建立 / 增量更新索引（--force 全部重建）
-bin/indexer search "database mapping for LotNo" --limit 5
-bin/indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
-bin/indexer context Services/LotService.cs --lines 120 --padding 15   # 別名：slice
-bin/indexer data-access MES_Lot                           # 誰讀 / 寫 / 執行某資料表或預存程序；預存程序碰了哪些資料
-bin/indexer stats
-bin/indexer status                                       # 索引是否新鮮、失敗檔案、git commit、一致性檢查
+local-codebase-indexer --root <專案路徑> index                      # 建立 / 增量更新索引（--force 全部重建）
+local-codebase-indexer search "database mapping for LotNo" --limit 5
+local-codebase-indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
+local-codebase-indexer context Services/LotService.cs --lines 120 --padding 15   # 別名：slice
+local-codebase-indexer data-access MES_Lot                           # 誰讀 / 寫 / 執行某資料表或預存程序；預存程序碰了哪些資料
+local-codebase-indexer stats
+local-codebase-indexer status                                       # 索引是否新鮮、失敗檔案、git commit、一致性檢查
 ```
 
 - 不給 `--root` 時使用目前目錄，也可用環境變數 `INDEXER_ROOT`。
@@ -30,7 +35,8 @@ bin/indexer status                                       # 索引是否新鮮、
 ## 使用（Claude Code / MCP）
 
 ```bash
-claude mcp add local-indexer -- python /path/to/local-codebase-indexer/bin/indexer --root /path/to/project serve
+claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project serve
+# 不安裝直接跑：claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
 `serve` 以 stdio 提供 JSON-RPC（MCP），暴露五個工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_index_status`。
@@ -60,7 +66,7 @@ claude mcp add local-indexer -- python /path/to/local-codebase-indexer/bin/index
 
 ## 查詢擴展
 
-查詢會用小型同義詞字典擴展（`SP` / `預存程序` / `stored procedure` / `usp`、資料表、批號、報廢等；見 `indexer/synonyms.py`）。可在 `.ai_context/synonyms.json` 為專案新增或停用群組：`{"groups": [["wpnlot", "在製批"]], "disable": ["sp"]}`。這對縮寫與中英對照有幫助，對自由改寫的同義說法沒用。
+查詢會用小型同義詞字典擴展（`SP` / `預存程序` / `stored procedure` / `usp`、資料表、批號、報廢等；見 `local_codebase_indexer/synonyms.py`）。可在 `.ai_context/synonyms.json` 為專案新增或停用群組：`{"groups": [["wpnlot", "在製批"]], "disable": ["sp"]}`。這對縮寫與中英對照有幫助，對自由改寫的同義說法沒用。
 
 ## 索引健康狀態
 

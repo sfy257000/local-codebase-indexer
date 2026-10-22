@@ -31,8 +31,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from indexer.embedder import tokenize  # noqa: E402
-from indexer.query import CodebaseTools, _query_terms, render_search  # noqa: E402
+from local_codebase_indexer.embedder import tokenize  # noqa: E402
+from local_codebase_indexer.query import CodebaseTools, _query_terms, render_search  # noqa: E402
 
 TOP = 10
 CHARS_PER_TOKEN = 4  # rough estimate, only meaningful as a ratio

@@ -24,7 +24,7 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 
 - SQL / data-access relations: `data_access` table and tool (`data-access` CLI, `codebase_get_data_access` MCP); T-SQL read / write / exec, C# SQL strings and Dapper / SqlCommand / EF sinks, EF table mappings, indirect writers through procedures, dynamic SQL reported as `uncertain`; search routes "who writes / reads / calls X" to it. Benchmark `sql_dataflow` Recall@5 0.72 -> 1.00, new `data_access` queries 0.67 -> 1.00
 - C# symbol-level calls: using / field / constructor-injection / local type inference, interface dispatch, confidence levels. `relations Save` no longer shares one reference list across four unrelated methods
-- Domain-term query expansion (`indexer/synonyms.py`, extendable with `.ai_context/synonyms.json`); `abbreviation` Recall@5 0.67 -> 1.00, `cross_lingual` 0.50 -> 1.00 (small, author-written sets: optimistic). ONNX pooling / query-prefix options
+- Domain-term query expansion (`local_codebase_indexer/synonyms.py`, extendable with `.ai_context/synonyms.json`); `abbreviation` Recall@5 0.67 -> 1.00, `cross_lingual` 0.50 -> 1.00 (small, author-written sets: optimistic). ONNX pooling / query-prefix options
 - Index status tool, failure log (failed files are removed from the index and retried), git commit metadata, consistency checks
 - Search quality benchmark with a lint for leaky synonym queries
 - Chinese text indexed as character bigrams in full-text search

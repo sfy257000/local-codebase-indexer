@@ -7,10 +7,10 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from indexer import dataflow  # noqa: E402
-from indexer.query import CodebaseTools  # noqa: E402
-from indexer.sqlaccess import extract_sql_accesses  # noqa: E402
-from indexer.synonyms import Expander  # noqa: E402
+from local_codebase_indexer import dataflow  # noqa: E402
+from local_codebase_indexer.query import CodebaseTools  # noqa: E402
+from local_codebase_indexer.sqlaccess import extract_sql_accesses  # noqa: E402
+from local_codebase_indexer.synonyms import Expander  # noqa: E402
 
 
 def acc(sql):

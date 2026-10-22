@@ -20,7 +20,7 @@ def _emit(data, text: str, as_json: bool) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="indexer", description="Local codebase indexer & context provider")
+    p = argparse.ArgumentParser(prog="local-codebase-indexer", description="Local codebase indexer & context provider")
     p.add_argument("--root", default=os.environ.get("INDEXER_ROOT", os.getcwd()), help="project root (default: cwd)")
     p.add_argument("--json", action="store_true", help="print JSON instead of compact text")
     p.add_argument("--version", action="version", version=__version__)
