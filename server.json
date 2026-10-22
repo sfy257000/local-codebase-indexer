@@ -7,12 +7,12 @@
     "url": "https://github.com/sfy257000/local-codebase-indexer",
     "source": "github"
   },
-  "version": "0.3.1",
+  "version": "0.3.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "local-codebase-indexer",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

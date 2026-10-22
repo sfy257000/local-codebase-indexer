@@ -112,3 +112,33 @@ def test_synonym_expansion_and_project_override(tmp_path):
     e2 = Expander(str(tmp_path))
     assert "wpnlot" in e2.expand("在製批 查詢")
     assert "proc" not in e2.expand("SP list")
+
+
+def test_bare_table_name_finds_its_repository_not_every_lot_class(tmp_path):
+    """Real-world miss: searching SFC_MLot ranked OutsourceLot / PNLToPCSLot above SFC_MLotRepository because the
+    sub-word 'lot' matched everything, and the table was spelled SFC_Mlot in the SQL string."""
+    (tmp_path / "Repo").mkdir()
+    (tmp_path / "Models").mkdir()
+    (tmp_path / "Repo" / "SFC_MLotRepository.cs").write_text("""using System.Threading.Tasks;
+using Dapper;
+namespace E {
+  public class SFC_MLotRepository : ISFC_MLotRepository {
+    private readonly System.Data.IDbConnection _db;
+    public Task<int> Deduct(decimal qty) {
+        string sql = @" UPDATE SFC_Mlot SET Qty = Qty - @qty WHERE PostFlag = 'W'; DELETE FROM SFC_Mlot WHERE Qty <= 0;";
+        return _db.ExecuteAsync(sql, new { qty });
+    }
+  }
+  public interface ISFC_MLotRepository { Task<int> Deduct(decimal qty); }
+}
+""", encoding="utf-8")
+    lots = "".join(f"public class Lot{i} : SFCLot {{ }} public class ReworkLot{i} : SFCLot {{ }}\n" for i in range(8))
+    (tmp_path / "Models" / "SFCLot.cs").write_text(
+        "namespace E { public partial class SFCLot { }\n" + lots + "public class OutsourceLot : SFCLot { } }", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    for q in ("SFC_MLot", "SFC_Mlot", "sfc_mlot"):
+        top = t.semantic_search(q, limit=5)["results"]
+        assert top[0]["file_path"].endswith("SFC_MLotRepository.cs"), q
+        assert sum(r["file_path"].endswith("SFC_MLotRepository.cs") for r in top) >= 3, q
+        assert any((r.get("data_access") or {}).get("access") == "write" for r in top), q
+    t.indexer.close()

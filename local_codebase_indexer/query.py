@@ -94,6 +94,7 @@ class CodebaseTools:
                 terms.append(t)
         ranked: dict[str, list[int]] = {"keyword": [], "symbol": [], "vector": []}
         ranks_override: dict[str, dict[int, int]] = {}
+        exact_ids: set[int] = set()  # chunks whose symbol name contains a full identifier typed in the query
 
         # keyword layer: FTS5 / bm25 over chunk text
         if terms:
@@ -125,6 +126,19 @@ class CodebaseTools:
                 ):
                     if _has_word(t, r["file_path"]):
                         scores[r[0]] += 1
+            # a full identifier typed by the user (SFC_MLot) must match names containing it whole, whatever the
+            # case or underscores (SFC_Mlot, SFC_MLotRepository); sub-word matches alone would favour every *Lot
+            for ident in self._whole_identifiers(query):
+                squashed = re.sub(r"[^a-z0-9]", "", ident.lower())
+                like = f"%{squashed}%"
+                for r in self.conn.execute(
+                    "SELECT c.rowid FROM chunk_metadata c JOIN symbols s ON s.id = c.symbol_id "
+                    "WHERE replace(lower(s.symbol_name), '_', '') LIKE ? LIMIT 500", (like,)):
+                    scores[r[0]] += 3
+                    exact_ids.add(r[0])
+                for r in self.conn.execute(
+                    "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ? LIMIT 300", (like,)):
+                    scores[r[0]] += 2
             ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:pool]
             ranked["symbol"] = [rid for rid, _ in ordered]
             # equal match counts must share a rank, otherwise arbitrary row order decides
@@ -154,13 +168,26 @@ class CodebaseTools:
                 fused[rid] += LAYER_WEIGHTS[name] / (RRF_K + rank)
                 via[rid].append(name)
         top_ids = [rid for rid, _ in sorted(fused.items(), key=lambda kv: -kv[1])]
+        if exact_ids:  # a typed identifier beats sub-word noise (every *Lot class), ties keep the fused order
+            top_ids = [r for r in top_ids if r in exact_ids] + [r for r in top_ids if r not in exact_ids]
 
         results, seen_spans = [], set()
-        for acc in self._route_data_access(query)[:limit]:
+        routed, bare = self._route_data_access(query)
+        routed_hits = []
+        for acc in routed[:limit]:
             hit = self._chunk_result(acc)
             if hit is not None and (hit["file_path"], hit["start_line"], hit["end_line"]) not in seen_spans:
                 seen_spans.add((hit["file_path"], hit["start_line"], hit["end_line"]))
-                results.append(hit)
+                routed_hits.append(hit)
+        if bare and routed_hits and top_ids:
+            # only a name was typed: the definition (best ordinary match) first, then who touches it
+            first = self._ordinary_hit(top_ids[0], fused, via)
+            if first is not None:
+                span = (first["file_path"], first["start_line"], first["end_line"])
+                routed_hits = [h for h in routed_hits if (h["file_path"], h["start_line"], h["end_line"]) != span]
+                results.append(first)
+                seen_spans.add(span)
+        results.extend(routed_hits)
         for rid in top_ids:
             if len(results) >= limit:
                 break
@@ -194,14 +221,39 @@ class CodebaseTools:
         return {"query": query, "results": results, "related_files": self._related_files(results[:3])}
 
     # ------------------------------------------------------------------ data access routing
+    def _ordinary_hit(self, rid: int, fused: dict, via: dict) -> dict | None:
+        row = self.conn.execute(
+            "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, s.symbol_type, s.qualified_name, s.signature "
+            "FROM chunk_metadata c LEFT JOIN symbols s ON s.id = c.symbol_id WHERE c.rowid=?", (rid,)).fetchone()
+        if row is None:
+            return None
+        lines = textwrap.dedent(row["raw_text"].rstrip()).split("\n")
+        return {"file_path": row["file_path"], "start_line": row["start_line"], "end_line": row["end_line"],
+                "symbol": row["qualified_name"], "symbol_type": row["symbol_type"], "signature": row["signature"],
+                "score": round(fused[rid], 5), "matched_by": via[rid],
+                "snippet": "\n".join(lines[:12]) + ("\n..." if len(lines) > 12 else "")}
+
+    @staticmethod
+    def _whole_identifiers(query: str) -> list[str]:
+        """Identifier-looking tokens (underscore, digit or camelCase inside) of at least 5 characters."""
+        out = []
+        for ident in re.findall(r"[A-Za-z_][\w$]*", query):
+            if len(ident) >= 5 and (re.search(r"[_\d]", ident[1:]) or
+                                    (re.search(r"[a-z]", ident) and re.search(r"[A-Z]", ident[1:]))):
+                out.append(ident)
+        return out
+
     _OBJECT_HINT = re.compile(r"\b(table|tables|procedure|procedures|proc|stored|view|views|sp)\b|資料表|預存程序|存储过程|数据表", re.I)
 
-    def _route_data_access(self, query: str) -> list[dict]:
+    def _route_data_access(self, query: str) -> tuple[list[dict], bool]:
         """Queries such as "what writes to MES_Lot" name a known table / procedure and an intent. A ranked chunk
         list cannot enumerate every writer, so those queries get the accessors from the data access index first."""
         intents = dataflow.detect_intents(query)
+        bare = False
         if not intents:
-            return []
+            if len(query.split()) > 3:
+                return [], False
+            intents, bare = {"touch"}, True
         keys = dataflow.known_object_keys(self.conn)
         hinted = bool(self._OBJECT_HINT.search(query))
         found: list[str] = []
@@ -218,7 +270,9 @@ class CodebaseTools:
                 if sig not in seen:
                     seen.add(sig)
                     out.append(acc)
-        return out
+        if bare:  # leave room for the ordinary name matches (the class, the repository, the file)
+            out = out[:3]
+        return out, bare
 
     def _chunk_result(self, acc: dict) -> dict | None:
         conn = self.conn
