@@ -10,10 +10,13 @@ from collections import defaultdict
 
 import numpy as np
 
+from . import dataflow
 from . import db as dbmod
+from .callgraph import CONF_ORDER
 from .core import Indexer, cjk_bigrams, git_info
 from .scanner import iter_files
 from .embedder import split_identifier
+from .synonyms import Expander
 
 RRF_K = 60
 # the symbol-name layer is a weak signal (substring match), so it counts for less
@@ -67,6 +70,7 @@ class CodebaseTools:
         self.conn: sqlite3.Connection = self.indexer.conn
         self.embedder = self.indexer.embedder
         self.auto_refresh = auto_refresh
+        self.expander = Expander(self.root)
         self._fresh = False
 
     def refresh(self, force: bool = False):
@@ -83,7 +87,11 @@ class CodebaseTools:
         self._ensure()
         limit = max(1, min(int(limit or 5), 50))
         pool = max(limit * 6, 30)
+        extra = self.expander.expand(query)
         terms = _query_terms(query)
+        for t in _query_terms(" ".join(extra)):
+            if t not in terms:
+                terms.append(t)
         ranked: dict[str, list[int]] = {"keyword": [], "symbol": [], "vector": []}
         ranks_override: dict[str, dict[int, int]] = {}
 
@@ -130,7 +138,9 @@ class CodebaseTools:
         if rows:
             ids = np.fromiter((r[0] for r in rows), dtype=np.int64, count=len(rows))
             mat = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), -1)
-            qv = self.embedder.embed([query])[0]
+            qtext = query + " " + " ".join(extra) if extra else query
+            qv = (self.embedder.embed_query(qtext) if hasattr(self.embedder, "embed_query")
+                  else self.embedder.embed([qtext])[0])
             if float(np.linalg.norm(qv)) > 0:
                 sims = mat @ qv
                 top = np.argsort(-sims)[:pool]
@@ -146,7 +156,14 @@ class CodebaseTools:
         top_ids = [rid for rid, _ in sorted(fused.items(), key=lambda kv: -kv[1])]
 
         results, seen_spans = [], set()
+        for acc in self._route_data_access(query)[:limit]:
+            hit = self._chunk_result(acc)
+            if hit is not None and (hit["file_path"], hit["start_line"], hit["end_line"]) not in seen_spans:
+                seen_spans.add((hit["file_path"], hit["start_line"], hit["end_line"]))
+                results.append(hit)
         for rid in top_ids:
+            if len(results) >= limit:
+                break
             row = self.conn.execute(
                 "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, c.symbol_id, "
                 "s.symbol_type, s.qualified_name, s.signature "
@@ -175,6 +192,61 @@ class CodebaseTools:
                 break
 
         return {"query": query, "results": results, "related_files": self._related_files(results[:3])}
+
+    # ------------------------------------------------------------------ data access routing
+    _OBJECT_HINT = re.compile(r"\b(table|tables|procedure|procedures|proc|stored|view|views|sp)\b|資料表|預存程序|存储过程|数据表", re.I)
+
+    def _route_data_access(self, query: str) -> list[dict]:
+        """Queries such as "what writes to MES_Lot" name a known table / procedure and an intent. A ranked chunk
+        list cannot enumerate every writer, so those queries get the accessors from the data access index first."""
+        intents = dataflow.detect_intents(query)
+        if not intents:
+            return []
+        keys = dataflow.known_object_keys(self.conn)
+        hinted = bool(self._OBJECT_HINT.search(query))
+        found: list[str] = []
+        for ident in re.findall(r"[A-Za-z_][\w$]*(?:\.[\w$]+){0,3}", query):
+            key = dataflow.object_key(ident)
+            looks_like_object = bool(re.search(r"[_.\d]", ident) or (re.search(r"[a-z]", ident) and re.search(r"[A-Z]", ident[1:])))
+            if len(key) >= 3 and key in keys and (looks_like_object or hinted) and key not in found:
+                found.append(key)
+        out: list[dict] = []
+        seen = set()
+        for key in found[:2]:
+            for acc in dataflow.accessors_for_search(self.conn, key, intents):
+                sig = (acc["source_id"], acc["file_path"], acc["line"])
+                if sig not in seen:
+                    seen.add(sig)
+                    out.append(acc)
+        return out
+
+    def _chunk_result(self, acc: dict) -> dict | None:
+        conn = self.conn
+        if acc["source_id"]:
+            row = conn.execute(
+                "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, s.symbol_type, s.qualified_name, s.signature "
+                "FROM chunk_metadata c LEFT JOIN symbols s ON s.id = c.symbol_id WHERE c.symbol_id=? "
+                "ORDER BY (c.start_line<=? AND c.end_line>=?) DESC, c.start_line LIMIT 1",
+                (acc["source_id"], acc["line"], acc["line"])).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, NULL AS symbol_type, NULL AS qualified_name, "
+                "NULL AS signature FROM chunk_metadata c WHERE c.file_path=? AND c.start_line<=? AND c.end_line>=? LIMIT 1",
+                (acc["file_path"], acc["line"], acc["line"])).fetchone()
+        if row is None:
+            return None
+        snippet_lines = textwrap.dedent(row["raw_text"].rstrip()).split("\n")
+        return {
+            "file_path": row["file_path"], "start_line": row["start_line"], "end_line": row["end_line"],
+            "symbol": row["qualified_name"], "symbol_type": row["symbol_type"], "signature": row["signature"],
+            "score": 1.0, "matched_by": ["data_access"],
+            "data_access": {k: acc[k] for k in ("target", "access", "op", "via", "confidence", "line", "depth", "via_chain")},
+            "snippet": "\n".join(snippet_lines[:12]) + ("\n..." if len(snippet_lines) > 12 else ""),
+        }
+
+    def data_access(self, object_name: str) -> dict:
+        self._ensure()
+        return dataflow.data_access(self.conn, object_name)
 
     def _related_files(self, seeds: list[dict]) -> list[dict]:
         """Graph traversal: dependencies of / on the top seed files."""
@@ -236,10 +308,11 @@ class CodebaseTools:
             out_defs.append(entry)
         return {
             "symbol": symbol_name, "definitions": out_defs,
-            "note": "inheritance edges are AST based; usage edges are identifier-name matches (no type resolution)",
+            "note": ("C# method calls are resolved by receiver type (confirmed / probable / candidate); type references and "
+                 "fields remain identifier-name matches; inheritance edges come from the AST"),
         }
 
-    def _upstream(self, d: sqlite3.Row) -> dict:
+    def _type_upstream(self, d: sqlite3.Row) -> dict:
         name = d["symbol_name"]
         conn = self.conn
         inheritors = [
@@ -256,9 +329,89 @@ class CodebaseTools:
             if r["file_path"] == d["file_path"] and d["start_line"] <= r["line"] <= d["end_line"]:
                 continue  # inside the definition itself
             refs.append({"file_path": r["file_path"], "line": r["line"], "in_symbol": r["user_symbol"]})
-        return {"inheritors_or_implementers": inheritors, "referenced_by": refs[:60], "referenced_by_total": len(refs)}
+        up = {"inheritors_or_implementers": inheritors, "referenced_by": refs[:60], "referenced_by_total": len(refs)}
+        if d["symbol_type"] in _TYPE_KINDS:
+            up["instantiated_by"] = self._callers(
+                "c.callee_id IN (SELECT id FROM symbols WHERE id=? OR (parent_id=? AND symbol_type='constructor'))",
+                (d["id"], d["id"]))[0]
+        return up
+
+    _METHOD_KINDS = ("method", "constructor", "operator")
+    _SQL_KINDS = ("procedure", "view", "function", "table")
+
+    def _callers(self, where: str, params: tuple, limit: int = 200) -> tuple[list[dict], int]:
+        order = "CASE c.confidence WHEN 'confirmed' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END, c.file_path, c.line"
+        base = f"FROM calls c JOIN symbols s ON s.id = c.caller_id WHERE {where}"
+        total = self.conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
+        rows = self.conn.execute(
+            f"SELECT s.qualified_name, s.symbol_type, c.file_path, c.line, c.confidence, c.reason {base} "
+            f"ORDER BY {order} LIMIT ?", (*params, limit)).fetchall()
+        return ([{"symbol": r["qualified_name"], "type": r["symbol_type"], "file_path": r["file_path"],
+                  "line": r["line"], "confidence": r["confidence"], "reason": r["reason"]} for r in rows], total)
+
+    def _upstream(self, d: sqlite3.Row) -> dict:
+        kind = d["symbol_type"]
+        if kind in self._METHOD_KINDS:
+            callers, total = self._callers("c.callee_id=?", (d["id"],))
+            impls = []
+            parent = self.conn.execute("SELECT * FROM symbols WHERE id=?", (d["parent_id"],)).fetchone() if d["parent_id"] else None
+            if parent is not None and parent["symbol_type"] == "interface":
+                impls = [{"symbol": r["qualified_name"], "file_path": r["file_path"], "line": r["start_line"]}
+                         for r in self.conn.execute(
+                    "SELECT m.* FROM raw_refs r JOIN symbols m ON m.parent_id = r.owner "
+                    "WHERE r.kind='base' AND r.name=? AND m.symbol_name=? AND m.symbol_type='method' "
+                    "ORDER BY m.file_path, m.start_line", (parent["symbol_name"], d["symbol_name"]))]
+            return {"callers": callers, "callers_total": total, "implementations": impls,
+                    "inheritors_or_implementers": [], "referenced_by": [], "referenced_by_total": 0}
+        if kind in self._SQL_KINDS:
+            res = dataflow.data_access(self.conn, d["symbol_name"])
+            callers = []
+            for label, key in (("writes", "writers"), ("reads", "readers"), ("executes", "executed_by"), ("maps", "mapped_by")):
+                for e in res.get(key, []):
+                    callers.append({"symbol": e["source"], "type": e["source_type"], "file_path": e["file_path"],
+                                    "line": e["line"], "confidence": e["confidence"],
+                                    "reason": f'{label} ({e["op"]}, {e["via"]})' + (
+                                        f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else "")})
+            return {"callers": callers[:200], "callers_total": len(callers), "implementations": [],
+                    "inheritors_or_implementers": [], "referenced_by": [], "referenced_by_total": 0}
+        return self._type_upstream(d)
 
     def _downstream(self, d: sqlite3.Row, type_defs: dict) -> dict:
+        kind = d["symbol_type"]
+        conn = self.conn
+        if kind in self._METHOD_KINDS:
+            order = "CASE c.confidence WHEN 'confirmed' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END"
+            calls = [{"symbol": r["qualified_name"], "type": r["symbol_type"], "file_path": r["file_path"],
+                      "line": r["line"], "callee_line": r["start_line"], "confidence": r["confidence"],
+                      "reason": r["reason"]}
+                     for r in conn.execute(
+                "SELECT s.qualified_name, s.symbol_type, s.file_path, s.start_line, c.line, c.confidence, c.reason "
+                f"FROM calls c JOIN symbols s ON s.id = c.callee_id WHERE c.caller_id=? ORDER BY c.line, {order}",
+                (d["id"],))]
+            down = self._type_downstream(d, type_defs)
+            down["calls"] = calls
+            down["data_access"] = self._own_data_access(d["id"])
+            return down
+        if kind in ("procedure", "view", "function"):
+            res = dataflow.data_access(conn, d["symbol_name"])
+            t = res.get("touches", {})
+            down = {"base_types": [], "uses_types": [], "calls": [], "data_access": []}
+            for key in ("writes", "reads", "executes", "dynamic_sql"):
+                for e in t.get(key, []):
+                    down["data_access"].append({
+                        "target": e["target"], "access": e["access"], "op": e["op"], "via": e["via"],
+                        "confidence": e["confidence"], "line": e["line"], "file_path": e["file_path"],
+                        "via_chain": e["via_chain"]})
+            return down
+        return self._type_downstream(d, type_defs)
+
+    def _own_data_access(self, symbol_id: str) -> list[dict]:
+        return [{"target": r["target_name"], "access": r["access"], "op": r["op"], "via": r["via"],
+                 "confidence": r["confidence"], "line": r["line"], "file_path": r["file_path"], "via_chain": []}
+                for r in self.conn.execute(
+            "SELECT * FROM data_access WHERE source_id=? ORDER BY line", (symbol_id,))]
+
+    def _type_downstream(self, d: sqlite3.Row, type_defs: dict) -> dict:
         conn = self.conn
         bases = []
         for r in conn.execute("SELECT name FROM raw_refs WHERE kind='base' AND owner=?", (d["id"],)):
@@ -411,6 +564,13 @@ class CodebaseTools:
             ("dependencies pointing at files that are not indexed",
              "SELECT COUNT(*) FROM dependencies WHERE source_path NOT IN (SELECT file_path FROM files)"
              " OR target_path NOT IN (SELECT file_path FROM files)"),
+            ("data access rows of files that are not indexed",
+             "SELECT COUNT(*) FROM data_access WHERE file_path NOT IN (SELECT file_path FROM files)"),
+            ("call sites of files that are not indexed",
+             "SELECT COUNT(*) FROM call_sites WHERE file_path NOT IN (SELECT file_path FROM files)"),
+            ("calls whose caller or callee symbol is missing",
+             "SELECT COUNT(*) FROM calls WHERE caller_id NOT IN (SELECT id FROM symbols)"
+             " OR callee_id NOT IN (SELECT id FROM symbols)"),
         ]
         return [f"{n} {label}" for label, sql in checks if (n := one(sql))]
 
@@ -424,6 +584,8 @@ class CodebaseTools:
             "symbols": c.execute("SELECT COUNT(*) FROM symbols").fetchone()[0],
             "chunks": c.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0],
             "dependencies": c.execute("SELECT COUNT(*) FROM dependencies").fetchone()[0],
+            "calls": c.execute("SELECT COUNT(*) FROM calls").fetchone()[0],
+            "data_access": c.execute("SELECT COUNT(*) FROM data_access").fetchone()[0],
             "languages": langs,
         }
 
@@ -441,6 +603,11 @@ def render_search(res: dict) -> str:
         out.append(f'{head}  (score {r["score"]}, via {"+".join(r["matched_by"])})')
         if r["signature"]:
             out.append(f'    sig: {r["signature"]}')
+        da = r.get("data_access")
+        if da:
+            chain = f' via {" > ".join(da["via_chain"])}' if da["via_chain"] else ""
+            out.append(f'    data access: {da["access"]}/{da["op"]} {da["target"]} '
+                       f'[{da["confidence"]}, {da["via"]}] line {da["line"]}{chain}')
         out.extend("    " + ln for ln in r["snippet"].split("\n"))
     if res["related_files"]:
         out.append("Related files (dependency graph):")
@@ -464,6 +631,14 @@ def render_relations(res: dict) -> str:
         up = d.get("upstream")
         if up is not None:
             out.append("  UPSTREAM (who depends on it)")
+            for x in up.get("callers", [])[:30]:
+                out.append(f'    [{x["confidence"]}] {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["line"]}  ({x["reason"]})')
+            if up.get("callers_total", 0) > 30:
+                out.append(f'    ... {up["callers_total"] - 30} more')
+            for x in up.get("implementations", []):
+                out.append(f'    implemented by {x["symbol"]}  {x["file_path"]}:{x["line"]}')
+            for x in up.get("instantiated_by", [])[:15]:
+                out.append(f'    [{x["confidence"]}] instantiated in {x["symbol"]}  {x["file_path"]}:{x["line"]}')
             for x in up["inheritors_or_implementers"]:
                 out.append(f'    inherited/implemented by {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["line"]}')
             for x in up["referenced_by"][:25]:
@@ -473,6 +648,12 @@ def render_relations(res: dict) -> str:
         down = d.get("downstream")
         if down is not None:
             out.append("  DOWNSTREAM (what it depends on)")
+            for x in down.get("calls", [])[:40]:
+                out.append(f'    [{x["confidence"]}] calls {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["callee_line"]}'
+                           f'  (line {x["line"]}; {x["reason"]})')
+            for x in down.get("data_access", [])[:40]:
+                chain = f' via {" > ".join(x["via_chain"])}' if x.get("via_chain") else ""
+                out.append(f'    [{x["confidence"]}] {x["access"]}/{x["op"]} {x["target"]}  (line {x["line"]}; {x["via"]}){chain}')
             for b in down["base_types"]:
                 where = ", ".join(f'{t["file_path"]}:{t["line"]}' for t in b["defined_in"]) or "external/unresolved"
                 out.append(f'    base/interface {b["name"]}  -> {where}')
@@ -481,6 +662,52 @@ def render_relations(res: dict) -> str:
                 out.append(f'    uses {u["name"]} (line {u["first_line"]})  -> {where}')
     if res.get("note"):
         out.append(f'note: {res["note"]}')
+    return "\n".join(out)
+
+
+def _da_line(e: dict) -> str:
+    chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
+    return (f'    [{e["confidence"]}] {e["source_type"]} {e["source"]}  {e["file_path"]}:{e["line"]}  '
+            f'{e["op"]} ({e["via"]}){chain}')
+
+
+def render_data_access(res: dict) -> str:
+    if not res["found"]:
+        msg = f'No table or procedure named "{res["object"]}" found.'
+        if res.get("suggestions"):
+            msg += " Similar: " + ", ".join(res["suggestions"])
+        return msg
+    out = [f'{res["kind"]} {res["object"]}']
+    for d in res["definitions"]:
+        out.append(f'  defined in {d["file_path"]}:{d["line"]}')
+    sections = [("WRITTEN BY", "writers"), ("READ BY", "readers"), ("EXECUTED BY", "executed_by"),
+                ("MAPPED BY (EF)", "mapped_by")]
+    for title, key in sections:
+        items = res[key]
+        if items:
+            out.append(f"  {title} ({len(items)})")
+            out.extend(_da_line(e) for e in items[:40])
+            if len(items) > 40:
+                out.append(f"    ... {len(items) - 40} more")
+    t = res.get("touches")
+    if t:
+        for title, key in (("WRITES", "writes"), ("READS", "reads"), ("EXECUTES", "executes")):
+            if t[key]:
+                out.append(f"  {title} ({len(t[key])})")
+                for e in t[key][:40]:
+                    chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
+                    out.append(f'    [{e["confidence"]}] {e["target"]}  {e["file_path"]}:{e["line"]}  {e["op"]}{chain}')
+        if t["dynamic_sql"]:
+            out.append(f'  DYNAMIC SQL inside ({len(t["dynamic_sql"])}) - targets cannot be determined')
+            for e in t["dynamic_sql"][:10]:
+                out.append(f'    {e["file_path"]}:{e["line"]}  {e["evidence"][:100]}')
+    if res["possible"]:
+        out.append(f'  POSSIBLE (uncertain, dynamic SQL) ({len(res["possible"])})')
+        out.extend(_da_line(e) for e in res["possible"][:20])
+    if not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
+        out.append("  no recorded access")
+    for n in res.get("notes", []):
+        out.append(f"note: {n}")
     return "\n".join(out)
 
 

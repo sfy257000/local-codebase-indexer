@@ -6,7 +6,7 @@ import json
 import sys
 
 from . import __version__
-from .query import CodebaseTools, render_context, render_relations, render_search, render_status
+from .query import CodebaseTools, render_context, render_data_access, render_relations, render_search, render_status
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -49,6 +49,17 @@ TOOLS = [
         },
     },
     {
+        "name": "codebase_get_data_access",
+        "description": "Who reads, writes or executes a database table / stored procedure / view (SQL files and C# SQL strings, Dapper, ADO.NET, EF mappings), including callers of procedures that write it, and what a procedure itself touches. Dynamic SQL is reported as uncertain.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "object_name": {"type": "string", "description": 'Table, view or procedure name, optionally schema qualified, e.g. "MES_Lot" or "dbo.usp_Lot_UpdateStatus".'},
+            },
+            "required": ["object_name"],
+        },
+    },
+    {
         "name": "codebase_index_status",
         "description": "Report whether the index can be trusted: freshness, git commit it was built from, files that failed to index, and consistency checks. Does not refresh the index.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -63,6 +74,8 @@ def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
         return render_relations(tools.symbol_relations(args["symbol_name"], args.get("relation_direction", "both")))
     if name == "codebase_get_optimized_context":
         return render_context(tools.optimized_context(args["file_path"], args["focus_lines"], args.get("padding_lines", 15)))
+    if name == "codebase_get_data_access":
+        return render_data_access(tools.data_access(args["object_name"]))
     if name == "codebase_index_status":
         return render_status(tools.index_status())
     raise KeyError(f"unknown tool: {name}")

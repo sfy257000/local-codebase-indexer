@@ -382,6 +382,62 @@
     }
    ],
    "note": "three places (exhaustiveness check)"
+  },
+  {
+   "category": "data_access",
+   "query": "which code reads the MES_ScrapRecord table",
+   "relevant": [
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "FindByLot"
+    }
+   ]
+  },
+  {
+   "category": "data_access",
+   "query": "who modifies MES_ScrapRecord",
+   "relevant": [
+    {
+     "file": "Sql/usp_Scrap_Insert.sql"
+    },
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "MarkCancelled"
+    },
+    {
+     "file": "Repositories/ScrapRepository.cs",
+     "symbol": "Insert"
+    }
+   ],
+   "note": "two direct writers plus a C# method that writes through a stored procedure (exhaustiveness check)"
+  },
+  {
+   "category": "data_access",
+   "query": "哪些程式會寫入 MES_Lot",
+   "relevant": [
+    {
+     "file": "Sql/usp_Lot_UpdateStatus.sql"
+    },
+    {
+     "file": "Repositories/LotRepository.cs",
+     "symbol": "Upsert"
+    },
+    {
+     "file": "Repositories/LotRepository.cs",
+     "symbol": "UpdateStatus"
+    }
+   ],
+   "note": "Chinese phrasing of a write query; includes the C# method that writes through the procedure"
+  },
+  {
+   "category": "data_access",
+   "query": "usp_Lot_UpdateStatus 被誰呼叫",
+   "relevant": [
+    {
+     "file": "Repositories/LotRepository.cs",
+     "symbol": "UpdateStatus"
+    }
+   ]
   }
  ]
 }

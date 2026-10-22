@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lines", "--focus_lines", dest="lines", nargs="+", type=int, required=True)
     s.add_argument("--padding", "--padding_lines", dest="padding", type=int, default=15)
 
+    s = sub.add_parser("data-access", aliases=["dataflow", "codebase_get_data_access"],
+                       help="who reads / writes / executes a table or stored procedure, and what a procedure touches")
+    s.add_argument("object", nargs="?")
+    s.add_argument("--object_name", dest="object_opt")
+
     sub.add_parser("stats", help="show index statistics")
     sub.add_parser("status", aliases=["codebase_index_status"], help="index health: freshness, failures, consistency")
     sub.add_parser("serve", help="run as MCP server over stdio (JSON-RPC)")
@@ -61,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp_server import serve
         return serve(root)
 
-    from .query import render_context, render_relations, render_search, render_status
+    from .query import render_context, render_data_access, render_relations, render_search, render_status
 
     try:
         t = _tools(root)
@@ -93,6 +98,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             res = t.optimized_context(f, args.lines, args.padding)
             _emit(res, render_context(res), args.json)
+        elif args.cmd in ("data-access", "dataflow", "codebase_get_data_access"):
+            name = args.object_opt or args.object
+            if not name:
+                print("error: an object name is required", file=sys.stderr)
+                return 2
+            res = t.data_access(name)
+            _emit(res, render_data_access(res), args.json)
         elif args.cmd in ("status", "codebase_index_status"):
             res = t.index_status()
             _emit(res, render_status(res), args.json)

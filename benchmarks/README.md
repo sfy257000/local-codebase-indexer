@@ -25,6 +25,7 @@ Expected answers are `file` plus an optional `symbol` suffix. A result is releva
 
 ## Caveats
 
+- The synthetic corpus, its queries and the synonym dictionary were written by the same author (the `data_access` queries were written before the routing existed, to limit tuning), so absolute numbers are optimistic. `synonym` (free paraphrase) is still 0.30: a dictionary cannot fix it.
 - The synthetic corpus and its queries were written by the same author, so absolute numbers are optimistic. Use them to compare versions, not to claim a quality level.
 - `synonym` and `cross_lingual` queries must share no content word with their answers. The runner lints this (`LINT:` lines) and a test fails if a query leaks.
 - Some `stdlib` answers are debatable (for example `email.headerregistry.Address` is also a reasonable answer for "format an address"), so treat that suite as a relative measure.

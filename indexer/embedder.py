@@ -91,10 +91,22 @@ class OnnxEmbedder:
             os.path.join(model_dir, "model.onnx"), providers=["CPUExecutionProvider"]
         )
         self.input_names = {i.name for i in self.session.get_inputs()}
+        # bge models pool the [CLS] token and expect an instruction prefix on queries; MiniLM-style models mean-pool
+        self.pooling = os.environ.get("INDEXER_ONNX_POOLING", "mean").lower()
+        if self.pooling not in ("mean", "cls"):
+            raise ValueError("INDEXER_ONNX_POOLING must be 'mean' or 'cls'")
+        self.query_prefix = os.environ.get("INDEXER_ONNX_QUERY_PREFIX", "")
+        self.name += f":{self.pooling}"
+        out_dim = self.session.get_outputs()[0].shape[-1]
+        if isinstance(out_dim, int):
+            self.dim = out_dim
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self.embed([self.query_prefix + text])[0]
 
     def embed(self, texts: Sequence[str]) -> np.ndarray:
         if not texts:
-            return np.zeros((0, DIM), np.float32)
+            return np.zeros((0, self.dim), np.float32)
         out = []
         for i in range(0, len(texts), 16):
             enc = self.tok.encode_batch(list(texts[i:i + 16]))
@@ -104,8 +116,11 @@ class OnnxEmbedder:
             if "token_type_ids" in self.input_names:
                 feeds["token_type_ids"] = np.zeros_like(ids)
             hidden = self.session.run(None, {k: v for k, v in feeds.items() if k in self.input_names})[0]
-            m = mask[..., None].astype(np.float32)
-            pooled = (hidden * m).sum(1) / np.clip(m.sum(1), 1e-9, None)
+            if self.pooling == "cls":
+                pooled = hidden[:, 0, :]
+            else:
+                m = mask[..., None].astype(np.float32)
+                pooled = (hidden * m).sum(1) / np.clip(m.sum(1), 1e-9, None)
             pooled /= np.clip(np.linalg.norm(pooled, axis=1, keepdims=True), 1e-9, None)
             out.append(pooled.astype(np.float32))
         return np.vstack(out)

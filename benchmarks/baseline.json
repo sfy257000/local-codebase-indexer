@@ -6,10 +6,10 @@
    "files": 24,
    "chunks": 87,
    "symbols": 102,
-   "index_seconds": 0.04,
-   "noop_reindex_seconds": 0.002,
-   "median_query_ms": 1.5,
-   "p95_query_ms": 3.1,
+   "index_seconds": 0.05,
+   "noop_reindex_seconds": 0.003,
+   "median_query_ms": 3.6,
+   "p95_query_ms": 7.1,
    "categories": {
     "exact_identifier": {
      "n": 5,
@@ -21,65 +21,72 @@
     "natural_language": {
      "n": 7,
      "recall5": 0.857,
-     "recall10": 0.857,
-     "mrr": 0.786,
-     "token_ratio": 1.267
+     "recall10": 1.0,
+     "mrr": 0.806,
+     "token_ratio": 1.213
     },
     "synonym": {
      "n": 5,
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "mrr": 0.0,
-     "token_ratio": 0.905
+     "recall5": 0.3,
+     "recall10": 0.3,
+     "mrr": 0.3,
+     "token_ratio": 1.063
     },
     "abbreviation": {
      "n": 3,
-     "recall5": 0.667,
-     "recall10": 0.667,
-     "mrr": 0.25,
-     "token_ratio": 1.005
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 0.5,
+     "token_ratio": 0.946
     },
     "chinese": {
      "n": 4,
      "recall5": 1.0,
      "recall10": 1.0,
      "mrr": 1.0,
-     "token_ratio": 0.824
+     "token_ratio": 0.747
     },
     "cross_lingual": {
      "n": 2,
-     "recall5": 0.5,
-     "recall10": 0.5,
-     "mrr": 0.167,
-     "token_ratio": 0.764
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 1.0,
+     "token_ratio": 1.949
     },
     "same_name_method": {
      "n": 3,
      "recall5": 1.0,
      "recall10": 1.0,
      "mrr": 0.833,
-     "token_ratio": 1.235
+     "token_ratio": 1.224
     },
     "cross_file": {
      "n": 3,
      "recall5": 1.0,
      "recall10": 1.0,
-     "mrr": 0.833,
-     "token_ratio": 1.176
+     "mrr": 1.0,
+     "token_ratio": 1.061
     },
     "sql_dataflow": {
      "n": 6,
-     "recall5": 0.722,
-     "recall10": 0.861,
-     "mrr": 0.456,
-     "token_ratio": 1.146
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 0.833,
+     "token_ratio": 1.243
+    },
+    "data_access": {
+     "n": 4,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 1.0,
+     "token_ratio": 1.378
     },
     "OVERALL": {
-     "n": 38,
-     "recall5": 0.746,
-     "recall10": 0.768,
-     "mrr": 0.614,
-     "token_ratio": 1.043
+     "n": 42,
+     "recall5": 0.893,
+     "recall10": 0.917,
+     "mrr": 0.813,
+     "token_ratio": 1.116
     }
    },
    "rows": [
@@ -170,7 +177,7 @@
       "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
       "Services/LotService.cs::Acme.Mes.Services.LotService.FinishProduction"
      ],
-     "tokens_returned": 611.25,
+     "tokens_returned": 650.0,
      "tokens_whole_files": 544.5
     },
     {
@@ -181,12 +188,12 @@
      "rr": 1.0,
      "first_rank": 1,
      "top3": [
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
       "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.HashPassword",
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService"
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
+      "Auth/LoginService.cs::-"
      ],
-     "tokens_returned": 378.0,
-     "tokens_whole_files": 244.25
+     "tokens_returned": 378.5,
+     "tokens_whole_files": 274.75
     },
     {
      "category": "natural_language",
@@ -196,12 +203,12 @@
      "rr": 1.0,
      "first_rank": 1,
      "top3": [
-      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.PrintLotLabel",
       "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter",
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.PrintLotLabel",
       "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.openport"
      ],
-     "tokens_returned": 452.5,
-     "tokens_whole_files": 176.5
+     "tokens_returned": 456.0,
+     "tokens_whole_files": 262.0
     },
     {
      "category": "natural_language",
@@ -213,7 +220,7 @@
      "top3": [
       "tools/export_report.py::export_inspection_report",
       "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report",
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionService"
+      "Services/InspectionService.cs::Acme.Mes.Services.InspectionService.Save"
      ],
      "tokens_returned": 499.5,
      "tokens_whole_files": 387.25
@@ -221,17 +228,17 @@
     {
      "category": "natural_language",
      "query": "map the lot entity to its database table",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot",
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get"
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.OnModelCreating",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository",
+      "Sql/MES_Lot.sql::dbo.MES_Lot"
      ],
-     "tokens_returned": 559.5,
-     "tokens_whole_files": 403.0
+     "tokens_returned": 470.0,
+     "tokens_whole_files": 522.75
     },
     {
      "category": "natural_language",
@@ -251,17 +258,17 @@
     {
      "category": "natural_language",
      "query": "database connection string",
-     "recall5": 1.0,
+     "recall5": 0.0,
      "recall10": 1.0,
-     "rr": 1.0,
-     "first_rank": 1,
+     "rr": 0.14285714285714285,
+     "first_rank": 7,
      "top3": [
-      "Web.config::-",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.ScrapRepository",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.LotRepository"
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.Lots",
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.ScrapRecords",
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext"
      ],
-     "tokens_returned": 474.0,
-     "tokens_whole_files": 622.0
+     "tokens_returned": 384.5,
+     "tokens_whole_files": 394.0
     },
     {
      "category": "synonym",
@@ -271,12 +278,12 @@
      "rr": 0.0,
      "first_rank": null,
      "top3": [
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionService.Save",
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService",
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult"
+      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult.DefectCode",
+      "tools/export_report.py::export_inspection_report",
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 395.25,
-     "tokens_whole_files": 392.0
+     "tokens_returned": 458.0,
+     "tokens_whole_files": 562.0
     },
     {
      "category": "synonym",
@@ -296,32 +303,32 @@
     {
      "category": "synonym",
      "query": "halt the equipment when a boring bit fractures",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert"
+      "Models/DrillBreakEvent.cs::Acme.Mes.Models.DrillBreakEvent.MachineId",
+      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.OperatorId",
+      "Models/Lot.cs::Acme.Mes.Models.Lot.Status"
      ],
-     "tokens_returned": 568.0,
-     "tokens_whole_files": 799.75
+     "tokens_returned": 476.75,
+     "tokens_whole_files": 290.5
     },
     {
      "category": "synonym",
      "query": "manufacturing batch state transition",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 0.5,
+     "recall10": 0.5,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Models/DrillBreakEvent.cs::Acme.Mes.Models.DrillBreakEvent.ToolId",
-      "Models/DrillBreakEvent.cs::Acme.Mes.Models.DrillBreakEvent.MachineId",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.ReasonCode"
+      "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get"
      ],
-     "tokens_returned": 470.0,
-     "tokens_whole_files": 407.75
+     "tokens_returned": 616.0,
+     "tokens_whole_files": 445.5
     },
     {
      "category": "synonym",
@@ -341,32 +348,32 @@
     {
      "category": "abbreviation",
      "query": "SP that inserts scrap records",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.ScrapRecords",
-      "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
-      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Save"
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 477.5,
-     "tokens_whole_files": 555.25
+     "tokens_returned": 557.0,
+     "tokens_whole_files": 593.25
     },
     {
      "category": "abbreviation",
      "query": "SP to change lot status",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.25,
-     "first_rank": 4,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
       "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus",
-      "Services/LotService.cs::Acme.Mes.Services.LotService.FinishProduction"
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 629.5,
-     "tokens_whole_files": 544.5
+     "tokens_returned": 555.0,
+     "tokens_whole_files": 613.0
     },
     {
      "category": "abbreviation",
@@ -378,10 +385,10 @@
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
       "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
-      "Utils/DateRangeHelper.cs::Acme.Mes.Utils.DateRangeHelper.LastDays"
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 624.25,
-     "tokens_whole_files": 623.5
+     "tokens_returned": 625.25,
+     "tokens_whole_files": 630.5
     },
     {
      "category": "chinese",
@@ -392,11 +399,11 @@
      "first_rank": 1,
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
-      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
-      "Models/Lot.cs::Acme.Mes.Models.Lot.PartNo"
+      "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
+      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
      ],
-     "tokens_returned": 612.5,
-     "tokens_whole_files": 557.0
+     "tokens_returned": 576.25,
+     "tokens_whole_files": 775.25
     },
     {
      "category": "chinese",
@@ -448,30 +455,30 @@
      "query": "登入驗證密碼",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.3333333333333333,
-     "first_rank": 3,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/DrillBreakEvent.cs::Acme.Mes.Models.DrillBreakEvent.OccurredAt",
-      "Legacy/frmChangeLine.frm::-",
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate"
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.HashPassword",
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService"
      ],
-     "tokens_returned": 607.5,
-     "tokens_whole_files": 558.25
+     "tokens_returned": 442.75,
+     "tokens_whole_files": 276.25
     },
     {
      "category": "cross_lingual",
      "query": "標籤列印機",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot.LotNo",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.LotNo",
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult.LotNo"
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.PrintLotLabel",
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter",
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.openport"
      ],
-     "tokens_returned": 504.5,
-     "tokens_whole_files": 897.25
+     "tokens_returned": 439.5,
+     "tokens_whole_files": 176.5
     },
     {
      "category": "same_name_method",
@@ -483,9 +490,9 @@
      "top3": [
       "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Save",
       "Services/ScrapService.cs::Acme.Mes.Services.ScrapService.Save",
-      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
+      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Cancel"
      ],
-     "tokens_returned": 454.5,
+     "tokens_returned": 442.0,
      "tokens_whole_files": 255.75
     },
     {
@@ -528,10 +535,10 @@
      "top3": [
       "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController",
       "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
-      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
+      "Controllers/LotController.cs::Acme.Mes.Controllers.LotController"
      ],
-     "tokens_returned": 556.0,
-     "tokens_whole_files": 501.5
+     "tokens_returned": 493.0,
+     "tokens_whole_files": 566.75
     },
     {
      "category": "cross_file",
@@ -542,10 +549,10 @@
      "first_rank": 1,
      "top3": [
       "Web/scrapForm.ts::submitScrapForm",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.ReasonCode",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController"
      ],
-     "tokens_returned": 624.5,
+     "tokens_returned": 582.5,
      "tokens_whole_files": 426.75
     },
     {
@@ -553,105 +560,165 @@
      "query": "which repository executes the scrap insert procedure",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.5,
-     "first_rank": 2,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.ScrapRepository"
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 535.25,
-     "tokens_whole_files": 530.25
+     "tokens_returned": 602.5,
+     "tokens_whole_files": 588.0
     },
     {
      "category": "sql_dataflow",
      "query": "which stored procedure updates the MES_Lot table",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.3333333333333333,
-     "first_rank": 3,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus"
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
      ],
-     "tokens_returned": 614.75,
-     "tokens_whole_files": 372.0
+     "tokens_returned": 693.25,
+     "tokens_whole_files": 440.5
     },
     {
      "category": "sql_dataflow",
      "query": "which procedure writes to MES_ScrapRecord",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.2,
-     "first_rank": 5,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
-      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Save",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot"
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert"
      ],
-     "tokens_returned": 566.5,
+     "tokens_returned": 564.5,
      "tokens_whole_files": 475.0
     },
     {
      "category": "sql_dataflow",
      "query": "what reads from MES_Lot",
-     "recall5": 0.5,
-     "recall10": 0.5,
-     "rr": 0.5,
-     "first_rank": 2,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
       "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Models/Lot.cs::Acme.Mes.Models.Lot"
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report",
+      "Sql/MES_Lot.sql::dbo.MES_Lot"
      ],
-     "tokens_returned": 589.75,
-     "tokens_whole_files": 534.25
+     "tokens_returned": 546.0,
+     "tokens_whole_files": 602.75
     },
     {
      "category": "sql_dataflow",
      "query": "C# code that calls usp_Scrap_Insert",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.5,
-     "first_rank": 2,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.ReasonCode"
      ],
-     "tokens_returned": 577.75,
+     "tokens_returned": 593.0,
      "tokens_whole_files": 689.0
     },
     {
      "category": "sql_dataflow",
      "query": "what writes to MES_Lot",
-     "recall5": 0.5,
+     "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.2,
-     "first_rank": 5,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Models/Lot.cs::Acme.Mes.Models.Lot"
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
      ],
-     "tokens_returned": 589.5,
-     "tokens_whole_files": 534.25
+     "tokens_returned": 658.0,
+     "tokens_whole_files": 372.0
     },
     {
      "category": "sql_dataflow",
      "query": "everything that touches the MES_ScrapRecord table",
-     "recall5": 0.3333333333333333,
-     "recall10": 0.6666666666666666,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.OnModelCreating",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot"
+     ],
+     "tokens_returned": 723.25,
+     "tokens_whole_files": 459.5
+    },
+    {
+     "category": "data_access",
+     "query": "which code reads the MES_ScrapRecord table",
+     "recall5": 1.0,
+     "recall10": 1.0,
      "rr": 1.0,
      "first_rank": 1,
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord"
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.OnModelCreating"
      ],
-     "tokens_returned": 502.5,
-     "tokens_whole_files": 397.5
+     "tokens_returned": 655.5,
+     "tokens_whole_files": 459.5
+    },
+    {
+     "category": "data_access",
+     "query": "who modifies MES_ScrapRecord",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert"
+     ],
+     "tokens_returned": 624.0,
+     "tokens_whole_files": 409.75
+    },
+    {
+     "category": "data_access",
+     "query": "哪些程式會寫入 MES_Lot",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
+     ],
+     "tokens_returned": 656.25,
+     "tokens_whole_files": 372.0
+    },
+    {
+     "category": "data_access",
+     "query": "usp_Lot_UpdateStatus 被誰呼叫",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Models/Lot.cs::Acme.Mes.Models.Lot.Status"
+     ],
+     "tokens_returned": 631.5,
+     "tokens_whole_files": 622.0
     }
    ]
   },
@@ -660,10 +727,10 @@
    "files": 109,
    "chunks": 2813,
    "symbols": 2627,
-   "index_seconds": 1.6,
-   "noop_reindex_seconds": 0.003,
-   "median_query_ms": 29.3,
-   "p95_query_ms": 37.6,
+   "index_seconds": 1.77,
+   "noop_reindex_seconds": 0.004,
+   "median_query_ms": 62.9,
+   "p95_query_ms": 140.8,
    "categories": {
     "exact_identifier": {
      "n": 5,
@@ -674,66 +741,73 @@
     },
     "natural_language": {
      "n": 7,
-     "recall5": 0.714,
-     "recall10": 0.857,
+     "recall5": 0.786,
+     "recall10": 1.0,
      "mrr": 0.73,
-     "token_ratio": 0.045
+     "token_ratio": 0.056
     },
     "synonym": {
      "n": 5,
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "mrr": 0.0,
-     "token_ratio": 0.024
+     "recall5": 0.3,
+     "recall10": 0.4,
+     "mrr": 0.3,
+     "token_ratio": 0.025
     },
     "abbreviation": {
      "n": 3,
-     "recall5": 0.667,
-     "recall10": 0.667,
-     "mrr": 0.233,
-     "token_ratio": 0.045
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 0.444,
+     "token_ratio": 0.935
     },
     "chinese": {
      "n": 4,
      "recall5": 1.0,
      "recall10": 1.0,
      "mrr": 1.0,
-     "token_ratio": 0.013
+     "token_ratio": 0.018
     },
     "cross_lingual": {
      "n": 2,
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "mrr": 0.0,
-     "token_ratio": 0.019
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 1.0,
+     "token_ratio": 0.028
     },
     "same_name_method": {
      "n": 3,
-     "recall5": 1.0,
+     "recall5": 0.667,
      "recall10": 1.0,
-     "mrr": 0.833,
-     "token_ratio": 1.066
+     "mrr": 0.722,
+     "token_ratio": 1.207
     },
     "cross_file": {
      "n": 3,
      "recall5": 1.0,
      "recall10": 1.0,
      "mrr": 1.0,
-     "token_ratio": 0.123
+     "token_ratio": 0.056
     },
     "sql_dataflow": {
      "n": 6,
-     "recall5": 0.722,
-     "recall10": 0.917,
-     "mrr": 0.464,
-     "token_ratio": 1.151
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 0.833,
+     "token_ratio": 1.418
+    },
+    "data_access": {
+     "n": 4,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "mrr": 1.0,
+     "token_ratio": 1.301
     },
     "OVERALL": {
-     "n": 38,
-     "recall5": 0.693,
-     "recall10": 0.75,
-     "mrr": 0.608,
-     "token_ratio": 0.037
+     "n": 42,
+     "recall5": 0.857,
+     "recall10": 0.929,
+     "mrr": 0.788,
+     "token_ratio": 0.05
     }
    },
    "rows": [
@@ -815,17 +889,17 @@
     {
      "category": "natural_language",
      "query": "where is the lot status changed when production is finished",
-     "recall5": 1.0,
+     "recall5": 0.5,
      "recall10": 1.0,
-     "rr": 1.0,
-     "first_rank": 1,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
       "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert"
      ],
-     "tokens_returned": 591.75,
-     "tokens_whole_files": 544.5
+     "tokens_returned": 621.25,
+     "tokens_whole_files": 445.5
     },
     {
      "category": "natural_language",
@@ -835,11 +909,11 @@
      "rr": 1.0,
      "first_rank": 1,
      "top3": [
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
       "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.HashPassword",
-      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService"
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
+      "Auth/LoginService.cs::-"
      ],
-     "tokens_returned": 449.0,
+     "tokens_returned": 447.25,
      "tokens_whole_files": 19590.25
     },
     {
@@ -847,14 +921,14 @@
      "query": "send a barcode label to the thermal printer",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 1.0,
-     "first_rank": 1,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
+      "_noise/http/client.py::CannotSendHeader",
       "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter",
-      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.PrintLotLabel",
-      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.openport"
+      "_noise/http/client.py::CannotSendRequest"
      ],
-     "tokens_returned": 372.5,
+     "tokens_returned": 516.25,
      "tokens_whole_files": 15070.5
     },
     {
@@ -867,25 +941,25 @@
      "top3": [
       "tools/export_report.py::export_inspection_report",
       "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report",
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult"
+      "_noise/asyncio/format_helpers.py::-"
      ],
-     "tokens_returned": 610.0,
-     "tokens_whole_files": 15281.25
+     "tokens_returned": 443.5,
+     "tokens_whole_files": 1904.5
     },
     {
      "category": "natural_language",
      "query": "map the lot entity to its database table",
-     "recall5": 0.0,
+     "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.1111111111111111,
-     "first_rank": 9,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Sql/MES_Lot.sql::dbo.MES_Lot"
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.OnModelCreating",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert"
      ],
-     "tokens_returned": 467.5,
-     "tokens_whole_files": 403.0
+     "tokens_returned": 511.0,
+     "tokens_whole_files": 467.5
     },
     {
      "category": "natural_language",
@@ -899,23 +973,23 @@
       "Utils/DateRangeHelper.cs::Acme.Mes.Utils.DateRangeHelper.LastDays",
       "_noise/email/utils.py::parsedate_to_datetime"
      ],
-     "tokens_returned": 759.75,
-     "tokens_whole_files": 16891.5
+     "tokens_returned": 723.0,
+     "tokens_whole_files": 4446.5
     },
     {
      "category": "natural_language",
      "query": "database connection string",
      "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall10": 1.0,
+     "rr": 0.1111111111111111,
+     "first_rank": 9,
      "top3": [
-      "_noise/asyncio/protocols.py::BaseProtocol.connection_made",
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.Lots",
       "_noise/asyncio/selector_events.py::_SelectorSocketTransport._call_connection_lost",
-      "_noise/asyncio/base_subprocess.py::WriteSubprocessPipeProto.connection_lost"
+      "_noise/asyncio/unix_events.py::_UnixReadPipeTransport._call_connection_lost"
      ],
-     "tokens_returned": 833.75,
-     "tokens_whole_files": 23423.5
+     "tokens_returned": 690.25,
+     "tokens_whole_files": 28745.0
     },
     {
      "category": "synonym",
@@ -925,12 +999,12 @@
      "rr": 0.0,
      "first_rank": null,
      "top3": [
-      "_noise/http/cookiejar.py::CookieJar.clear_session_cookies",
-      "_noise/http/cookiejar.py::FileCookieJar.revert",
-      "_noise/http/client.py::HTTPResponse._read_and_discard_trailer"
+      "_noise/email/errors.py::CloseBoundaryNotFoundDefect",
+      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult.DefectCode",
+      "_noise/email/errors.py::FirstHeaderLineIsContinuationDefect"
      ],
-     "tokens_returned": 1001.5,
-     "tokens_whole_files": 34309.5
+     "tokens_returned": 788.75,
+     "tokens_whole_files": 19950.75
     },
     {
      "category": "synonym",
@@ -950,32 +1024,32 @@
     {
      "category": "synonym",
      "query": "halt the equipment when a boring bit fractures",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
+      "Models/DrillBreakEvent.cs::Acme.Mes.Models.DrillBreakEvent.MachineId",
       "_noise/email/encoders.py::encode_7or8bit",
-      "_noise/email/base64mime.py::-",
-      "_noise/email/headerregistry.py::Group.display_name"
+      "_noise/unittest/case.py::FunctionTestCase.runTest"
      ],
-     "tokens_returned": 687.0,
-     "tokens_whole_files": 10885.75
+     "tokens_returned": 666.0,
+     "tokens_whole_files": 28100.75
     },
     {
      "category": "synonym",
      "query": "manufacturing batch state transition",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 0.5,
+     "recall10": 1.0,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "_noise/asyncio/sslproto.py::SSLProtocol._set_state",
-      "_noise/asyncio/exceptions.py::InvalidStateError",
-      "_noise/asyncio/runners.py::_State"
+      "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get"
      ],
-     "tokens_returned": 612.0,
-     "tokens_whole_files": 17837.25
+     "tokens_returned": 565.0,
+     "tokens_whole_files": 390.25
     },
     {
      "category": "synonym",
@@ -995,32 +1069,32 @@
     {
      "category": "abbreviation",
      "query": "SP that inserts scrap records",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.ScrapRecords",
-      "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
-      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.ScrapRecords"
      ],
-     "tokens_returned": 500.25,
-     "tokens_whole_files": 555.25
+     "tokens_returned": 561.0,
+     "tokens_whole_files": 593.25
     },
     {
      "category": "abbreviation",
      "query": "SP to change lot status",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.2,
-     "first_rank": 5,
+     "rr": 0.3333333333333333,
+     "first_rank": 3,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot.Status",
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report",
       "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus",
-      "Models/Lot.cs::Acme.Mes.Models.Lot"
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus"
      ],
-     "tokens_returned": 525.5,
-     "tokens_whole_files": 544.5
+     "tokens_returned": 507.25,
+     "tokens_whole_files": 613.0
     },
     {
      "category": "abbreviation",
@@ -1032,10 +1106,10 @@
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
       "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
-      "_noise/email/headerregistry.py::Address"
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 620.5,
-     "tokens_whole_files": 35135.5
+     "tokens_returned": 593.0,
+     "tokens_whole_files": 570.5
     },
     {
      "category": "chinese",
@@ -1046,11 +1120,11 @@
      "first_rank": 1,
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
-      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
-      "_noise/email/headerregistry.py::Address"
+      "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
+      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
      ],
-     "tokens_returned": 515.75,
-     "tokens_whole_files": 46084.25
+     "tokens_returned": 571.5,
+     "tokens_whole_files": 780.0
     },
     {
      "category": "chinese",
@@ -1100,46 +1174,46 @@
     {
      "category": "cross_lingual",
      "query": "登入驗證密碼",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "_noise/email/charset.py::add_alias",
-      "_noise/asyncio/streams.py::StreamReaderProtocol._get_close_waiter",
-      "_noise/http/cookies.py::BaseCookie.__parse_string"
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.Authenticate",
+      "Auth/LoginService.cs::Acme.Mes.Auth.LoginService.HashPassword",
+      "Auth/LoginService.cs::-"
      ],
-     "tokens_returned": 623.75,
-     "tokens_whole_files": 37140.5
+     "tokens_returned": 361.5,
+     "tokens_whole_files": 28044.25
     },
     {
      "category": "cross_lingual",
      "query": "標籤列印機",
-     "recall5": 0.0,
-     "recall10": 0.0,
-     "rr": 0.0,
-     "first_rank": null,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Models/Lot.cs::Acme.Mes.Models.Lot.LotNo",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.LotNo",
-      "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult.LotNo"
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter.PrintLotLabel",
+      "Printing/LabelPrinter.cs::Acme.Mes.Printing.LabelPrinter",
+      "_noise/asyncio/base_tasks.py::_task_print_stack"
      ],
-     "tokens_returned": 588.25,
-     "tokens_whole_files": 25840.75
+     "tokens_returned": 535.5,
+     "tokens_whole_files": 3753.5
     },
     {
      "category": "same_name_method",
      "query": "Save method of the scrap service",
-     "recall5": 1.0,
+     "recall5": 0.0,
      "recall10": 1.0,
-     "rr": 0.5,
-     "first_rank": 2,
+     "rr": 0.16666666666666666,
+     "first_rank": 6,
      "top3": [
+      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService",
       "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Save",
-      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService.Save",
-      "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
+      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Cancel"
      ],
-     "tokens_returned": 473.5,
+     "tokens_returned": 418.75,
      "tokens_whole_files": 435.5
     },
     {
@@ -1152,10 +1226,10 @@
      "top3": [
       "Services/LotService.cs::Acme.Mes.Services.LotService.Save",
       "Models/Lot.cs::Acme.Mes.Models.Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert"
+      "Controllers/LotController.cs::Acme.Mes.Controllers.LotController.LotController"
      ],
-     "tokens_returned": 549.75,
-     "tokens_whole_files": 633.25
+     "tokens_returned": 454.5,
+     "tokens_whole_files": 359.0
     },
     {
      "category": "same_name_method",
@@ -1169,7 +1243,7 @@
       "Services/InspectionService.cs::Acme.Mes.Services.InspectionResult",
       "Services/InspectionService.cs::Acme.Mes.Services.InspectionService"
      ],
-     "tokens_returned": 347.75,
+     "tokens_returned": 348.0,
      "tokens_whole_files": 217.25
     },
     {
@@ -1184,8 +1258,8 @@
       "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController.ScrapController",
       "Services/ScrapService.cs::Acme.Mes.Services.ScrapService"
      ],
-     "tokens_returned": 505.75,
-     "tokens_whole_files": 435.5
+     "tokens_returned": 519.0,
+     "tokens_whole_files": 566.75
     },
     {
      "category": "cross_file",
@@ -1197,10 +1271,10 @@
      "top3": [
       "Web/scrapForm.ts::submitScrapForm",
       "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.ReasonCode",
-      "Controllers/ScrapController.cs::Acme.Mes.Controllers.ScrapController"
+      "Legacy/frmChangeLine.frm::-"
      ],
-     "tokens_returned": 655.75,
-     "tokens_whole_files": 12862.75
+     "tokens_returned": 574.25,
+     "tokens_whole_files": 28179.0
     },
     {
      "category": "cross_file",
@@ -1212,24 +1286,24 @@
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
       "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.ScrapRepository"
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report"
      ],
-     "tokens_returned": 535.0,
-     "tokens_whole_files": 530.25
+     "tokens_returned": 564.5,
+     "tokens_whole_files": 682.5
     },
     {
      "category": "sql_dataflow",
      "query": "which stored procedure updates the MES_Lot table",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.3333333333333333,
-     "first_rank": 3,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus"
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
      ],
-     "tokens_returned": 614.75,
+     "tokens_returned": 664.5,
      "tokens_whole_files": 372.0
     },
     {
@@ -1237,75 +1311,135 @@
      "query": "which procedure writes to MES_ScrapRecord",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.2,
-     "first_rank": 5,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "Services/IScrapService.cs::Acme.Mes.Services.IScrapService.Save",
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord"
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert"
      ],
-     "tokens_returned": 584.75,
+     "tokens_returned": 564.5,
      "tokens_whole_files": 475.0
     },
     {
      "category": "sql_dataflow",
      "query": "what reads from MES_Lot",
-     "recall5": 0.5,
-     "recall10": 0.5,
-     "rr": 0.5,
-     "first_rank": 2,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
       "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Models/Lot.cs::Acme.Mes.Models.Lot"
+      "Sql/usp_Inspection_Report.sql::dbo.usp_Inspection_Report",
+      "Sql/MES_Lot.sql::dbo.MES_Lot"
      ],
-     "tokens_returned": 589.75,
-     "tokens_whole_files": 534.25
+     "tokens_returned": 604.5,
+     "tokens_whole_files": 471.5
     },
     {
      "category": "sql_dataflow",
      "query": "C# code that calls usp_Scrap_Insert",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.5,
-     "first_rank": 2,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
       "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord.ReasonCode"
      ],
-     "tokens_returned": 542.0,
+     "tokens_returned": 557.25,
      "tokens_whole_files": 509.25
     },
     {
      "category": "sql_dataflow",
      "query": "what writes to MES_Lot",
-     "recall5": 0.5,
+     "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.25,
-     "first_rank": 4,
+     "rr": 1.0,
+     "first_rank": 1,
      "top3": [
-      "Sql/MES_Lot.sql::dbo.MES_Lot",
-      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Get",
-      "Models/Lot.cs::Acme.Mes.Models.Lot"
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
      ],
-     "tokens_returned": 589.5,
-     "tokens_whole_files": 534.25
+     "tokens_returned": 658.0,
+     "tokens_whole_files": 372.0
     },
     {
      "category": "sql_dataflow",
      "query": "everything that touches the MES_ScrapRecord table",
-     "recall5": 0.3333333333333333,
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Data/MesDbContext.cs::Acme.Mes.Data.MesDbContext.OnModelCreating",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot"
+     ],
+     "tokens_returned": 723.25,
+     "tokens_whole_files": 459.5
+    },
+    {
+     "category": "data_access",
+     "query": "which code reads the MES_ScrapRecord table",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert"
+     ],
+     "tokens_returned": 592.25,
+     "tokens_whole_files": 529.5
+    },
+    {
+     "category": "data_access",
+     "query": "who modifies MES_ScrapRecord",
+     "recall5": 1.0,
      "recall10": 1.0,
      "rr": 1.0,
      "first_rank": 1,
      "top3": [
       "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.MarkCancelled",
-      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.FindByLot",
-      "Models/ScrapRecord.cs::Acme.Mes.Models.ScrapRecord"
+      "Sql/usp_Scrap_Insert.sql::dbo.usp_Scrap_Insert",
+      "Repositories/ScrapRepository.cs::Acme.Mes.Repositories.ScrapRepository.Insert"
      ],
-     "tokens_returned": 546.5,
-     "tokens_whole_files": 588.0
+     "tokens_returned": 624.25,
+     "tokens_whole_files": 409.75
+    },
+    {
+     "category": "data_access",
+     "query": "哪些程式會寫入 MES_Lot",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.Upsert",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus"
+     ],
+     "tokens_returned": 656.25,
+     "tokens_whole_files": 372.0
+    },
+    {
+     "category": "data_access",
+     "query": "usp_Lot_UpdateStatus 被誰呼叫",
+     "recall5": 1.0,
+     "recall10": 1.0,
+     "rr": 1.0,
+     "first_rank": 1,
+     "top3": [
+      "Repositories/LotRepository.cs::Acme.Mes.Repositories.LotRepository.UpdateStatus",
+      "Sql/usp_Lot_UpdateStatus.sql::dbo.usp_Lot_UpdateStatus",
+      "Models/Lot.cs::Acme.Mes.Models.Lot.Status"
+     ],
+     "tokens_returned": 542.25,
+     "tokens_whole_files": 544.5
     }
    ]
   },
@@ -1314,24 +1448,24 @@
    "files": 85,
    "chunks": 2726,
    "symbols": 2525,
-   "index_seconds": 1.46,
-   "noop_reindex_seconds": 0.003,
-   "median_query_ms": 33.8,
-   "p95_query_ms": 37.7,
+   "index_seconds": 1.68,
+   "noop_reindex_seconds": 0.004,
+   "median_query_ms": 48.3,
+   "p95_query_ms": 94.0,
    "categories": {
     "stdlib": {
      "n": 12,
-     "recall5": 0.5,
+     "recall5": 0.583,
      "recall10": 0.625,
-     "mrr": 0.417,
-     "token_ratio": 0.033
+     "mrr": 0.458,
+     "token_ratio": 0.034
     },
     "OVERALL": {
      "n": 12,
-     "recall5": 0.5,
+     "recall5": 0.583,
      "recall10": 0.625,
-     "mrr": 0.417,
-     "token_ratio": 0.033
+     "mrr": 0.458,
+     "token_ratio": 0.034
     }
    },
    "rows": [
@@ -1368,16 +1502,16 @@
     {
      "category": "stdlib",
      "query": "send the http response status line and headers",
-     "recall5": 0.0,
+     "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.16666666666666666,
-     "first_rank": 6,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "http/client.py::HTTPResponse._read_status",
       "http/server.py::BaseHTTPRequestHandler.send_response_only",
+      "http/server.py::BaseHTTPRequestHandler.send_response",
       "http/client.py::HTTPResponse.getcode"
      ],
-     "tokens_returned": 717.25,
+     "tokens_returned": 936.0,
      "tokens_whole_files": 27407.5
     },
     {
@@ -1475,15 +1609,15 @@
      "query": "skip a test unconditionally",
      "recall5": 1.0,
      "recall10": 1.0,
-     "rr": 0.3333333333333333,
-     "first_rank": 3,
+     "rr": 0.5,
+     "first_rank": 2,
      "top3": [
-      "unittest/case.py::TestCase.skipTest",
-      "unittest/case.py::SkipTest",
-      "unittest/case.py::skip"
+      "unittest/case.py::TestCase.debug",
+      "unittest/case.py::skip",
+      "unittest/case.py::TestCase.skipTest"
      ],
-     "tokens_returned": 580.5,
-     "tokens_whole_files": 16873.25
+     "tokens_returned": 750.0,
+     "tokens_whole_files": 14590.75
     },
     {
      "category": "stdlib",
@@ -1497,7 +1631,7 @@
       "unittest/case.py::TestCase.assertEqual",
       "unittest/case.py::TestCase.assertGreaterEqual"
      ],
-     "tokens_returned": 773.25,
+     "tokens_returned": 832.25,
      "tokens_whole_files": 14590.75
     },
     {
@@ -1510,10 +1644,10 @@
      "top3": [
       "unittest/case.py::_AssertRaisesContext",
       "unittest/case.py::TestCase.assertRaises",
-      "unittest/case.py::_AssertRaisesContext.__enter__"
+      "asyncio/locks.py::Barrier._block"
      ],
-     "tokens_returned": 787.75,
-     "tokens_whole_files": 14590.75
+     "tokens_returned": 927.0,
+     "tokens_whole_files": 19736.75
     }
    ]
   }

@@ -13,6 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from . import db as dbmod
+from .callgraph import resolve_calls
 from .embedder import get_embedder, split_identifier
 from .langparse import CLASS_LIKE, parse_file
 from .scanner import iter_files
@@ -171,6 +172,7 @@ class Indexer:
                           if r[0] not in seen])
         if changed or force:
             resolve_dependencies(conn)
+            resolve_calls(conn)
         self._record_run_meta()
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
@@ -207,6 +209,8 @@ class Indexer:
         c.execute("DELETE FROM chunk_metadata WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM symbols WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM raw_refs WHERE file_path=?", (rel_path,))
+        c.execute("DELETE FROM data_access WHERE file_path=?", (rel_path,))
+        c.execute("DELETE FROM call_sites WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM files WHERE file_path=?", (rel_path,))
         c.execute("DELETE FROM index_failures WHERE file_path=?", (rel_path,))
 
@@ -224,9 +228,23 @@ class Indexer:
             )
             c.executemany(
                 "INSERT OR REPLACE INTO symbols(id, file_path, symbol_name, symbol_type, parent_id,"
-                " start_line, end_line, signature, qualified_name) VALUES(?,?,?,?,?,?,?,?,?)",
-                [(s.id, rel_path, s.name, s.type, s.parent_id, s.start, s.end, s.signature, s.qname)
+                " start_line, end_line, signature, qualified_name, type_name, min_args, max_args)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                [(s.id, rel_path, s.name, s.type, s.parent_id, s.start, s.end, s.signature, s.qname,
+                  s.type_name or None, s.min_args, s.max_args)
                  for s in parsed.symbols],
+            )
+            c.executemany(
+                "INSERT INTO data_access(file_path, source_id, line, target_key, target_name, qualifier,"
+                " target_kind, access, op, via, confidence, evidence, detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [(rel_path, a.source_id, a.line, a.key, a.name, a.qualifier, a.kind, a.access, a.op, a.via,
+                  a.confidence, a.evidence, a.detail) for a in parsed.accesses],
+            )
+            c.executemany(
+                "INSERT INTO call_sites(file_path, caller_id, line, name, argc, recv_kind, recv_name, recv_type,"
+                " recv_expr, is_ctor) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                [(rel_path, cs.caller_id, cs.line, cs.name, cs.argc, cs.recv_kind, cs.recv_name, cs.recv_type,
+                  cs.recv_expr, int(cs.is_ctor)) for cs in parsed.call_sites],
             )
             c.executemany(
                 "INSERT OR IGNORE INTO raw_refs(file_path, kind, name, line, owner) VALUES(?,?,?,?,?)",

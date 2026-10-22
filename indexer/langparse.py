@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 
 from tree_sitter import Language, Parser
 
+from .csdata import extract_cs_accesses
+from .cscalls import extract_call_sites, member_info
+from .sqlaccess import extract_sql_accesses
+
 MAX_CHUNK_LINES = 80
 SPLIT_LINES = 60
 SPLIT_OVERLAP = 8
@@ -27,6 +31,9 @@ class Symbol:
     start: int
     end: int
     signature: str
+    type_name: str = ""   # declared / return type (C#), normalised
+    min_args: int = -1    # parameter counts for methods and constructors, -1 when not applicable
+    max_args: int = -1
 
 
 @dataclass
@@ -52,6 +59,8 @@ class ParseResult:
     refs: list[Ref] = field(default_factory=list)
     chunks: list[Chunk] = field(default_factory=list)
     parsed_with: str = "none"
+    accesses: list = field(default_factory=list)    # sqlaccess.Access: data access found in SQL and C# code
+    call_sites: list = field(default_factory=list)  # cscalls.CallSite (C# only)
 
 
 # --------------------------------------------------------------------------- grammars
@@ -180,6 +189,8 @@ class _Walker:
             start=start, end=_end_line(node),
             signature=_signature(node, self.src),
         )
+        if self.language == "csharp":
+            sym.type_name, sym.min_args, sym.max_args = member_info(node, self.src)
         self.symbols.append(sym)
         self.node_symbol[(node.type, node.start_byte, node.end_byte)] = sym.id
         return sym
@@ -381,7 +392,8 @@ def _collect_refs(root, w: _Walker, language: str) -> None:
 # --------------------------------------------------------------------------- SQL (regex)
 
 _SQL_CREATE = re.compile(
-    r"^\s*create\s+(?:or\s+alter\s+)?(proc(?:edure)?|view|function|table)\s+([\w\[\]\.\"`]+)",
+    r"^\s*(?:create\s+(?:or\s+alter\s+)?(proc(?:edure)?|view|function|table)|alter\s+(proc(?:edure)?|view|function))"
+    r"\s+([\w\[\]\.\"`]+)",
     re.I | re.M,
 )
 
@@ -390,9 +402,9 @@ def _parse_sql(lines: list[str], text: str, path: str) -> list[Symbol]:
     found = []
     for m in _SQL_CREATE.finditer(text):
         line = text.count("\n", 0, m.start()) + 1 + (1 if text[m.start()] == "\n" else 0)
-        kind = m.group(1).lower()
+        kind = (m.group(1) or m.group(2)).lower()
         kind = "procedure" if kind.startswith("proc") else kind
-        name = m.group(2).replace("[", "").replace("]", "").replace('"', "").replace("`", "")
+        name = m.group(3).replace("[", "").replace("]", "").replace('"', "").replace("`", "")
         found.append((line, kind, name))
     syms = []
     for i, (line, kind, name) in enumerate(found):
@@ -403,6 +415,36 @@ def _parse_sql(lines: list[str], text: str, path: str) -> list[Symbol]:
             signature=" ".join(lines[line - 1].split())[:300],
         ))
     return syms
+
+
+def _sql_file_accesses(lines: list[str], symbols: list[Symbol]) -> list:
+    """Data access per SQL object (each analysed on its own so CTE names and aliases do not leak between
+    procedures) plus the lines outside any object (scripts, seed data), which have no source symbol."""
+    out = []
+    covered = [False] * (len(lines) + 2)
+    for s in symbols:
+        for i in range(s.start, s.end + 1):
+            covered[i] = True
+        if s.type == "table":
+            continue  # a table definition does not read or write anything; trailing seed statements are file level
+        for a in extract_sql_accesses("\n".join(lines[s.start - 1:s.end]), s.start):
+            a.source_id = s.id
+            out.append(a)
+    i, n = 1, len(lines)
+    while i <= n:
+        if covered[i]:
+            i += 1
+            continue
+        j = i
+        while j <= n and not covered[j]:
+            j += 1
+        out.extend(extract_sql_accesses("\n".join(lines[i - 1:j - 1]), i))
+        i = j
+    for s in symbols:
+        if s.type == "table":
+            out.extend(extract_sql_accesses("\n".join(lines[s.start - 1:s.end]), s.start))  # file level
+    out.sort(key=lambda a: (a.line, a.access, a.key))
+    return out
 
 
 # --------------------------------------------------------------------------- chunking
@@ -509,6 +551,7 @@ def parse_file(language: str, text: str, path: str) -> ParseResult:
 
     if language == "sql":
         result.symbols = _parse_sql(lines, text, path)
+        result.accesses = _sql_file_accesses(lines, result.symbols)
         result.parsed_with = "regex"
     elif language in ("csharp", "python", "javascript", "typescript", "tsx"):
         parser = _load_parser(language)
@@ -519,5 +562,8 @@ def parse_file(language: str, text: str, path: str) -> ParseResult:
             w.walk(tree.root_node, None, "")
             _collect_refs(tree.root_node, w, language)
             result.symbols, result.refs, result.parsed_with = w.symbols, w.refs, "tree-sitter"
+            if language == "csharp":
+                result.accesses = extract_cs_accesses(tree.root_node, src, w.symbols)
+                result.call_sites = extract_call_sites(tree.root_node, src, w.symbols)
     result.chunks = build_chunks(lines, result.symbols, path)
     return result

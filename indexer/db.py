@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS symbols (
     end_line INTEGER NOT NULL,
     signature TEXT,
     qualified_name TEXT,
+    type_name TEXT,
+    min_args INTEGER,
+    max_args INTEGER,
     FOREIGN KEY(file_path) REFERENCES files(file_path)
 );
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(symbol_name);
@@ -81,6 +84,53 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 
+-- Data access: which table / procedure a SQL object or C# method reads, writes, executes or maps.
+-- target_key is the lower-case last name segment; "?" marks dynamic SQL whose target is unknown.
+CREATE TABLE IF NOT EXISTS data_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL,
+    source_id TEXT,
+    line INTEGER NOT NULL,
+    target_key TEXT NOT NULL,
+    target_name TEXT NOT NULL,
+    qualifier TEXT NOT NULL DEFAULT '',
+    target_kind TEXT NOT NULL,
+    access TEXT NOT NULL,
+    op TEXT NOT NULL,
+    via TEXT NOT NULL,
+    confidence TEXT NOT NULL,
+    evidence TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_da_target ON data_access(target_key);
+CREATE INDEX IF NOT EXISTS idx_da_file ON data_access(file_path);
+CREATE INDEX IF NOT EXISTS idx_da_source ON data_access(source_id);
+
+-- C# call sites as seen in the syntax tree, and the resolved symbol-level call graph derived from them.
+CREATE TABLE IF NOT EXISTS call_sites (
+    file_path TEXT NOT NULL,
+    caller_id TEXT,
+    line INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    argc INTEGER NOT NULL,
+    recv_kind TEXT NOT NULL,
+    recv_name TEXT NOT NULL DEFAULT '',
+    recv_type TEXT NOT NULL DEFAULT '',
+    recv_expr TEXT NOT NULL DEFAULT '',
+    is_ctor INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_cs_file ON call_sites(file_path);
+CREATE TABLE IF NOT EXISTS calls (
+    caller_id TEXT NOT NULL,
+    callee_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    confidence TEXT NOT NULL,
+    reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee_id);
+CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller_id);
+
 -- Files that could not be indexed on the last attempt. They are retried on every update.
 CREATE TABLE IF NOT EXISTS index_failures (
     file_path TEXT PRIMARY KEY,
@@ -90,7 +140,7 @@ CREATE TABLE IF NOT EXISTS index_failures (
 """
 
 # Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
-INDEX_VERSION = "3"
+INDEX_VERSION = "4"
 
 
 def index_dir(root: str) -> str:
@@ -113,7 +163,16 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that older index files lack (the index version check then rebuilds their content)."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(symbols)")}
+    for col, decl in (("type_name", "TEXT"), ("min_args", "INTEGER"), ("max_args", "INTEGER")):
+        if col not in have:
+            conn.execute(f"ALTER TABLE symbols ADD COLUMN {col} {decl}")
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:
@@ -131,5 +190,5 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 def clear_all(conn: sqlite3.Connection) -> None:
     for t in ("files", "symbols", "dependencies", "raw_refs", "chunk_metadata", "vss_chunks", "chunks_fts",
-              "index_failures"):
+              "index_failures", "data_access", "call_sites", "calls"):
         conn.execute(f"DELETE FROM {t}")

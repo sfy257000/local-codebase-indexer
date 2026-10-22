@@ -87,3 +87,17 @@ def test_missing_model_falls_back_to_hashing(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("INDEXER_ONNX_MODEL", str(tmp_path / "does-not-exist"))
     assert get_embedder().name == "hashing-384-v1"
     assert "ONNX embedder unavailable" in capsys.readouterr().err
+
+
+def test_cls_pooling_prefix_and_bad_pooling(model_dir, monkeypatch):
+    mean = OnnxEmbedder(model_dir).embed(["lot status"])[0]
+    monkeypatch.setenv("INDEXER_ONNX_POOLING", "cls")
+    monkeypatch.setenv("INDEXER_ONNX_QUERY_PREFIX", "query: ")
+    cls = OnnxEmbedder(model_dir)
+    v = cls.embed(["lot status"])[0]
+    assert np.isclose(np.linalg.norm(v), 1.0, atol=1e-4) and not np.allclose(v, mean)
+    assert cls.name.endswith(":cls")
+    assert not np.allclose(cls.embed_query("lot status"), v)  # prefix changes the query vector only
+    monkeypatch.setenv("INDEXER_ONNX_POOLING", "max")
+    with pytest.raises(ValueError):
+        OnnxEmbedder(model_dir)

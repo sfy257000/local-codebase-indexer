@@ -164,7 +164,7 @@ def test_mcp_protocol(project):
     assert handle(t, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     names = [x["name"] for x in handle(t, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
     assert names == ["codebase_semantic_search", "codebase_get_symbol_relations", "codebase_get_optimized_context",
-                     "codebase_index_status"]
+                     "codebase_get_data_access", "codebase_index_status"]
     call = handle(t, {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
         "name": "codebase_semantic_search", "arguments": {"query": "GetLot", "limit": 2}}})
     assert call["result"]["isError"] is False and "GetLot" in call["result"]["content"][0]["text"]
