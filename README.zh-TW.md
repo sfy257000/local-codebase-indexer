@@ -49,18 +49,20 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 | Topology | `using` / `import` 解析成檔案相依；繼承（base list）；型別使用（`invocation`）。存在 `dependencies` 表 |
 | Semantic | 區塊嵌入 384 維，存 `vss_chunks`；查詢時以 FTS5 關鍵字、符號名稱、向量三路做 Reciprocal Rank Fusion，再展開前 3 名檔案的相依鄰居 |
 
-編碼：先試 UTF-8，再試 Big5、cp1252。單檔超過 5MB 不索引；遵守根目錄與子目錄的 `.gitignore`；固定略過 `.git`、`bin`、`obj`、`node_modules` 等。
+編碼：先試 UTF-8，再試 Big5、cp1252。單檔超過 5MB 不索引；遵守根目錄與子目錄的 `.gitignore`；固定略過 `.git`、`bin`、`obj`、`node_modules` 等。`*.min.js` / `*.min.css` 也略過。已 commit 進 repo 的第三方或產生的程式可用 `.ai_context/ignore`（gitignore 語法）排除，例如 `Scripts/*`、`!Scripts/Custom/`、`Web References/`（EF database-first 產生的 model 不要排除，DbSet 宣告在它的 DbContext 裡）。
 
 ## 與規格的差異
 
 - **向量儲存**：規格的 `sqlite-vss` 需要原生擴充且已停止維護，這裡 `vss_chunks` 改存 float32 BLOB，用 numpy 暴力計算 cosine，不需要額外安裝擴充。
-- **嵌入模型**：預設是內建的 hashing 嵌入（識別字拆詞、雙詞組、中文雙字），快速、可重現，但**不理解同義詞**。要用真正的 transformer，匯出 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 為 ONNX，裝 `onnxruntime`、`tokenizers`，並設 `INDEXER_ONNX_MODEL=<含 model.onnx 與 tokenizer.json 的資料夾>`（載入、補齊、池化與重建索引的邏輯已用一個小型合成模型測試過；真實模型的檢索品質尚未量測，設好變數後請執行 `python benchmarks/run_benchmark.py --compare benchmarks/baseline.json` 驗證；目前用平均池化，適合 MiniLM，bge 系列建議用 CLS 池化）。切換嵌入後會自動重建索引。
-- **C# 呼叫關係**以有限度的型別推斷解析（using / namespace、欄位與建構式注入的型別、區域變數、介面對應實作），每條關係都標信心等級：`confirmed`（接收者型別已知）、`probable`（經由介面或唯一候選）、`candidate`（僅名稱相符）。沒有 Roslyn，所以不做依引數型別的多載解析、不處理委派 / lambda / 擴充方法，呼叫鏈只追一層。繼承關係來自 AST，可靠。
+- **嵌入模型**：預設是內建的 hashing 嵌入（識別字拆詞、雙詞組、中文雙字），快速、可重現，但**不理解同義詞**。要用真正的 transformer，匯出 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 為 ONNX，裝 `onnxruntime`、`tokenizers`，並設 `INDEXER_ONNX_MODEL=<含 model.onnx 與 tokenizer.json 的資料夾>`（目前用平均池化，適合 MiniLM，bge 系列建議用 CLS 池化）。切換嵌入後會自動重建索引。實測（0.4.0）：`all-MiniLM-L6-v2` 讓 benchmark MRR 提高 0.08–0.13，但在真實的 3 萬 chunk C# / 中文註解專案上，換句話說的查詢反而比 hashing 差（MRR 0.29 對 0.48；多語 MiniLM-L12 為 0.41），完整建索引從 2 分鐘變成 35–43 分鐘。因此預設維持 hashing；領域行話用 `.ai_context/synonyms.json` 比通用模型有效。
+- **C# 呼叫關係**以有限度的型別推斷解析（using / namespace、欄位與建構式注入的型別、`Lazy<T>.Value`、區域變數、`foreach (var x in items.Where(..))` 的元素型別、介面對應實作），每條關係都標信心等級：`confirmed`（接收者型別已知）、`probable`（經由介面或唯一候選）、`candidate`（僅名稱相符）。沒有 Roslyn，所以不做依引數型別的多載解析、不處理委派 / lambda / 擴充方法，呼叫鏈只追一層。繼承關係來自 AST，可靠。
 - 額外加了 `symbols.qualified_name`、`chunk_metadata.symbol_id`、`raw_refs`、`chunks_fts` 與 `meta` 表。
 
 ## 資料存取（SQL）
 
-`data-access <資料表或預存程序>` 回答「誰寫入 / 讀取 / 執行 X」。資料來源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含別名解析，排除 CTE、暫存表、系統物件）、C# 的 SQL 字串（字面值、`+`、字串內插、`string.Format`、常數、區域變數）經 Dapper、`SqlCommand` 或 EF `FromSql` 送出、搭配 `CommandType.StoredProcedure` 的 SP 名稱，以及 EF 的 `ToTable` / `[Table]` 對應。呼叫某 SP 的程式視為該 SP 所寫資料表的間接寫入者（最多追 4 層）。每筆都有信心等級；**動態 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值組成的 SQL）無法解析，會獨立列為 `uncertain`**，不會混進確定的清單。已知缺口：`FROM a JOIN b ON ..., c` 會漏掉 `c`；把 SP 名稱傳給非資料庫方法時看不到。
+`data-access <資料表或預存程序>` 回答「誰寫入 / 讀取 / 執行 X」。資料來源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含別名解析，排除 CTE、暫存表、系統物件）、C# 的 SQL 字串（字面值、`+`、字串內插、`string.Format`、常數、區域變數、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）經 Dapper、`SqlCommand` 或 EF `FromSql` 送出、搭配 `CommandType.StoredProcedure` 的 SP 名稱、對 `DbSet<T>` 成員的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比對成員名稱，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 對應。呼叫某 SP 的程式視為該 SP 所寫資料表的間接寫入者（最多追 4 層）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 呼叫往上追到 `*Controller` 方法（最多 8 層），（實作方法也會接到它所實作介面方法的呼叫者，涵蓋 `foreach (var step in steps) step.Run()` 這種管線），依 controller 檔案分組，並列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向這些 action 的 Razor 頁面（`.cshtml`），查一張表就知道哪些畫面會動到它。方法讀了某 DbSet 又呼叫 `SaveChanges`、但沒有明確 `Add` / `Remove` 時，可能是在更新追蹤中的實體，列為可能（`uncertain`）寫入者。每筆都有信心等級；**動態 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值組成的 SQL）無法解析，會獨立列為 `uncertain`**，不會混進確定的清單。已知缺口：`FROM a JOIN b ON ..., c` 會漏掉 `c`；把 SP 名稱傳給非資料庫方法時看不到。
+
+只存在資料庫裡的預存程序，可匯出到 repo 外的資料夾，再寫進 `.ai_context/extra_roots`（一行一個資料夾，絕對路徑或相對於專案根目錄）；這些檔案以絕對路徑索引。
 
 自然語言搜尋遇到「誰修改 MES_ScrapRecord」「哪些程式會寫入 MES_Lot」這類問題，會先走這個索引。
 

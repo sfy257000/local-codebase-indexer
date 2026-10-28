@@ -13,7 +13,7 @@ PROTOCOL_VERSION = "2024-11-05"
 TOOLS = [
     {
         "name": "codebase_semantic_search",
-        "description": "Find code components from a natural language description (hybrid keyword + symbol + vector search with dependency expansion).",
+        "description": "Find code from a description when you do not know the identifiers (Chinese or English; hybrid keyword + symbol + vector search). For an exact identifier or string literal, plain grep is faster and complete.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -25,11 +25,11 @@ TOOLS = [
     },
     {
         "name": "codebase_get_symbol_relations",
-        "description": "Trace inheritance, usages and cross-file dependencies of a class, interface or method.",
+        "description": "Who calls a method (resolved through interfaces / DI to the implementation, with confidence levels), what it calls, and who implements or inherits a type. Use instead of grep when the call goes through an interface. Overloaded names: pass Type.Method.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "symbol_name": {"type": "string", "description": 'Name of the class, interface or variable, e.g. "IExistOpenHandleService".'},
+                "symbol_name": {"type": "string", "description": 'Class, interface or method name; "Type.Method" or a full qualified name picks one class, e.g. "IExistOpenHandleService" or "SFC_MLotRepository.InsertAsync".'},
                 "relation_direction": {"type": "string", "enum": ["upstream", "downstream", "both"]},
             },
             "required": ["symbol_name", "relation_direction"],
@@ -50,7 +50,7 @@ TOOLS = [
     },
     {
         "name": "codebase_get_data_access",
-        "description": "Who reads, writes or executes a database table / stored procedure / view (SQL files and C# SQL strings, Dapper, ADO.NET, EF mappings), including callers of procedures that write it, and what a procedure itself touches. Dynamic SQL is reported as uncertain.",
+        "description": "Who reads, writes or executes a database table / stored procedure / view, and which programs (controller actions, followed through the C# call graph) end up touching it. Covers SQL files, C# SQL strings (literals, concatenation, StringBuilder) via Dapper / ADO.NET, EF LINQ on DbSets and EF mappings, plus callers of procedures. Prefer this over grep for impact analysis of a table. Dynamic SQL is reported as uncertain.",
         "inputSchema": {
             "type": "object",
             "properties": {

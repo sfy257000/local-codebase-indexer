@@ -1,10 +1,14 @@
 """Data access found in C# code: SQL strings, stored procedure calls (Dapper / ADO.NET) and EF table mappings.
 
-Strings are evaluated statically: literals, ``+`` concatenation, interpolation, ``string.Format``, constants and
-local variables (including ``sql += ...``). Parts that cannot be evaluated become holes. A SQL string handed to a
+Strings are evaluated statically: literals, ``+`` concatenation, interpolation, ``string.Format``, constants,
+local variables (including ``sql += ...``) and ``StringBuilder`` locals (``Append`` / ``AppendLine`` / ``AppendFormat``,
+``Clear``, ``ToString``). Parts that cannot be evaluated become holes. A SQL string handed to a
 known database API is ``confirmed`` when it is fully static and ``probable`` otherwise; a SQL-looking string that
 is not provably executed is ``probable``; a table name that is itself a hole, or an execution site whose SQL could
 not be determined at all, is ``uncertain``.
+
+EF LINQ on a context member (``ctx.Orders.Where(..)``, ``ctx.Orders.Add(x)``, ``from o in ctx.Orders``) is recorded as
+an ``ef_raw`` candidate; ``core.resolve_ef_access`` keeps those whose member is a declared ``DbSet<T>``.
 """
 
 from __future__ import annotations
@@ -22,6 +26,13 @@ _SCOPES = {
 _SINK_METHOD = re.compile(r"^(Execute\w*|Query\w*|FromSql\w*|SqlQuery\w*|Fill)$")
 _DAPPER_STRICT = re.compile(r"^(Execute|Query)\w*$")
 _COMMAND_TYPE = re.compile(r"(Command|DataAdapter)$")
+_APPEND = {"Append", "AppendLine", "AppendFormat"}
+_EF_WRITE = {"Add": "insert", "AddAsync": "insert", "AddRange": "insert", "AddRangeAsync": "insert",
+             "Remove": "delete", "RemoveRange": "delete", "Attach": "update", "Update": "update", "UpdateRange": "update"}
+_EF_READ = {"Where", "First", "FirstOrDefault", "FirstOrDefaultAsync", "Single", "SingleOrDefault", "Any", "AnyAsync",
+            "All", "Count", "CountAsync", "LongCount", "Find", "FindAsync", "ToList", "ToListAsync", "ToArray", "Select",
+            "OrderBy", "OrderByDescending", "AsNoTracking", "AsQueryable", "Include", "Max", "Min", "Sum", "Average",
+            "GroupBy", "Join", "Distinct", "Take", "Skip"}
 _PROC_NAME = re.compile(r"^[A-Za-z_][\w$]*(?:\.[\w$]+){0,2}$")
 _NOT_PROC = {"select", "update", "delete", "insert", "exec", "execute", "merge", "truncate"}
 _STATEMENT_SHAPES = [
@@ -43,6 +54,7 @@ class _Cand:
     line: int
     sink: bool = False
     proc_ok: bool = False  # may be read as a stored procedure name
+    builder: bool = False  # a StringBuilder local
 
 
 def looks_like_statement(text: str) -> bool:
@@ -165,6 +177,9 @@ class _Extractor:
             c = self.file_env.get(self.text(name)) if name is not None else None
             return (c.text, c.complete) if c else None
         if t == "invocation_expression":
+            c = self._builder_of(n, env)
+            if c is not None:
+                return c.text, c.complete
             func = n.child_by_field_name("function")
             if self.method_name(func) in ("Format", "Concat") and func is not None and "string" in self.text(func).lower():
                 args = self.arg_exprs(n.child_by_field_name("arguments"))
@@ -173,6 +188,69 @@ class _Extractor:
                     if first is not None:
                         return re.sub(r"\{\d+[^}]*\}", HOLE, first[0]), False
         return None
+
+    def _is_builder_creation(self, n) -> bool:
+        if n is None or n.type != "object_creation_expression":
+            return False
+        tnode = n.child_by_field_name("type")
+        return tnode is not None and self.text(tnode).split(".")[-1] == "StringBuilder"
+
+    def _new_builder(self, creation, env) -> _Cand:
+        c = _Cand("", True, self.line(creation), builder=True)
+        args = self.arg_exprs(creation.child_by_field_name("arguments"))
+        if args and args[0][0] is not None and self._is_stringy(args[0][0]):
+            r = self.evaluate(args[0][0], env)
+            if r:
+                c.text, c.complete = r
+        self.cands.append(c)
+        return c
+
+    def _builder_of(self, n, env) -> _Cand | None:
+        """The StringBuilder local behind ``sb.ToString()``."""
+        func = n.child_by_field_name("function")
+        if self.method_name(func) != "ToString" or func.type != "member_access_expression":
+            return None
+        recv = func.child_by_field_name("expression")
+        c = env.get(self.text(recv)) if recv is not None and recv.type == "identifier" else None
+        return c if c is not None and c.builder else None
+
+    def _builder_call(self, n, env, stack) -> bool:
+        """``sb.Append(..)`` (possibly chained) or ``sb.Clear()`` on a StringBuilder local."""
+        calls, cur = [], n
+        while cur is not None and cur.type == "invocation_expression":
+            func = cur.child_by_field_name("function")
+            name = self.method_name(func)
+            if name not in _APPEND and name != "Clear" or func.type != "member_access_expression":
+                return False
+            calls.append((cur, name))
+            cur = func.child_by_field_name("expression")
+        if cur is None or cur.type != "identifier":
+            return False
+        var = self.text(cur)
+        c = env.get(var)
+        if c is None or not c.builder:
+            return False
+        for call, name in reversed(calls):
+            if name == "Clear":
+                c = _Cand("", True, self.line(call), builder=True)
+                env[var] = c
+                self.cands.append(c)
+                continue
+            args = self.arg_exprs(call.child_by_field_name("arguments"))
+            r = self.evaluate(args[0][0], env) if args and args[0][0] is not None else None
+            if r is None:
+                if args and args[0][0] is not None:
+                    stack.append(("node", args[0][0]))
+                r = (HOLE, False) if args else ("", True)
+            text = re.sub(r"\{\d+[^}]*\}", HOLE, r[0]) if name == "AppendFormat" else r[0]
+            if not c.text.strip() and text.strip():
+                c.line = self.line(call)
+            c.text += text + ("\n" if name == "AppendLine" else "")
+            c.complete = c.complete and r[1] and name != "AppendFormat"
+            for expr, _named in args[1:]:
+                if expr is not None:
+                    stack.append(("node", expr))
+        return True
 
     def _is_stringy(self, n) -> bool:
         if n.type in _STRINGISH:
@@ -240,6 +318,14 @@ class _Extractor:
         t = n.type
         if t == "variable_declarator":
             ident, init = self._declarator(n)
+            if ident and self._is_builder_creation(init):
+                env[ident] = self._new_builder(init, env)
+                return True
+            if ident and init is not None and init.type == "invocation_expression":
+                c = self._builder_of(init, env)
+                if c is not None:
+                    env[ident] = c  # string sql = sb.ToString();
+                    return True
             if ident and init is not None and self._is_stringy(init):
                 r = self.evaluate(init, env)
                 if r:
@@ -256,6 +342,11 @@ class _Extractor:
             return self._creation(n, env, stack)
         if t == "attribute":
             self._attribute(n)
+            return False
+        if t == "from_clause":
+            member = next((c for c in n.named_children if c.type == "member_access_expression"), None)
+            if member is not None:
+                self._ef_raw(member, "Select", n)
             return False
         if self._is_stringy(n):
             r = self.evaluate(n, env)
@@ -275,6 +366,9 @@ class _Extractor:
                 if not self._is_stringy(right):
                     self._dynamic_site(n)
             stack.append(("node", left))
+            return True
+        if left.type == "identifier" and self._is_builder_creation(right):
+            env[self.text(left)] = self._new_builder(right, env)
             return True
         if left.type == "identifier" and self._is_stringy(right):
             name = self.text(left)
@@ -298,13 +392,13 @@ class _Extractor:
         """An argument handed to a database API. True when it was a statically known string."""
         if expr is None:
             return False
-        if expr.type == "identifier":
-            c = env.get(self.text(expr))
+        if expr.type in ("identifier", "invocation_expression"):
+            c = env.get(self.text(expr)) if expr.type == "identifier" else self._builder_of(expr, env)
             if c is not None:
                 c.sink = True
                 c.proc_ok = c.proc_ok or first
                 return True
-        elif self._is_stringy(expr) or expr.type in ("member_access_expression", "invocation_expression"):
+        if expr.type != "identifier" and (self._is_stringy(expr) or expr.type in ("member_access_expression", "invocation_expression")):
             r = self.evaluate(expr, env)
             if r is not None:
                 self.cands.append(_Cand(r[0], r[1], self.line(expr), sink=True, proc_ok=first))
@@ -313,8 +407,19 @@ class _Extractor:
         return False
 
     def _invocation(self, n, env, stack) -> bool:
+        if self._builder_call(n, env, stack):
+            return True
         func = n.child_by_field_name("function")
         name = self.method_name(func)
+        if func is not None and func.type == "member_access_expression" and (name in _EF_WRITE or name in _EF_READ):
+            recv = func.child_by_field_name("expression")
+            if recv is not None and recv.type == "member_access_expression":
+                self._ef_raw(recv, name, n)
+        if name in ("SaveChanges", "SaveChangesAsync"):
+            self.out.append(Access(
+                key="ef:#savechanges", name=name, qualifier="", kind="entity_set", access="write", op="update",
+                line=self.line(n), via="ef_raw", confidence="uncertain", evidence=self.collapsed(n), detail=name,
+            ))
         args = self.arg_exprs(n.child_by_field_name("arguments"))
         if name in ("ToTable", "ToView") and args and args[0][0] is not None and self._is_stringy(args[0][0]):
             r = self.evaluate(args[0][0], env)
@@ -352,6 +457,20 @@ class _Extractor:
             if c.type == "initializer_expression":
                 stack.append(("node", c))
         return True
+
+    def _ef_raw(self, member, method: str, n) -> None:
+        """``<ctx>.<Member>.<method>(..)``: a DbSet access when Member turns out to be a DbSet."""
+        name = member.child_by_field_name("name")
+        ctx = member.child_by_field_name("expression")
+        if name is None or name.type != "identifier" or ctx is None or ctx.type not in (
+                "identifier", "this_expression", "member_access_expression"):
+            return
+        write = _EF_WRITE.get(method)
+        self.out.append(Access(
+            key="ef:" + self.text(name).lower(), name=self.text(name), qualifier="", kind="entity_set",
+            access="write" if write else "read", op=write or "select", line=self.line(n), via="ef_raw",
+            confidence="probable", evidence=self.collapsed(n), detail=method,
+        ))
 
     def _dynamic_site(self, n) -> None:
         self.out.append(Access(

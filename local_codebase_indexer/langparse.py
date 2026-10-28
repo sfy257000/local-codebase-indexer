@@ -566,4 +566,28 @@ def parse_file(language: str, text: str, path: str) -> ParseResult:
                 result.accesses = extract_cs_accesses(tree.root_node, src, w.symbols)
                 result.call_sites = extract_call_sites(tree.root_node, src, w.symbols)
     result.chunks = build_chunks(lines, result.symbols, path)
+    if path.lower().endswith(".cshtml"):
+        _page_actions(lines, path, result)
     return result
+
+
+_URL_ACTION = re.compile(r'Url\.Action\(\s*"(\w+)"(?:\s*,\s*"(\w+)")?')
+# AngularJS pages: $scope.Controller = 'TCM'; ... $http.post($scope.ControllerPath + 'SetTcmCam', ..)
+_PAGE_CONTROLLER = re.compile(r"""\.Controller\s*=\s*['"](\w+)['"]""")
+_PATH_ACTION = re.compile(r"""ControllerPath\s*\+\s*['"](\w+)['"]""")
+
+
+def _page_actions(lines: list[str], path: str, result: ParseResult) -> None:
+    """A Razor page symbol plus one ``action`` ref (``Controller|Action``, controller "" = the page's own) per
+    ``Url.Action(..)`` or ``ControllerPath + 'Action'``; ``core.resolve_page_actions`` links them to controller
+    methods. Added after chunking."""
+    page = Symbol(f"{path}#page", path.rsplit("/", 1)[-1].rsplit(".", 1)[0], path, "page", None, 1, len(lines),
+                  f"page {path}")
+    ctrl = next((m.group(1) for line in lines for m in _PAGE_CONTROLLER.finditer(line)), "")
+    for i, line in enumerate(lines, 1):
+        for m in _URL_ACTION.finditer(line):
+            result.refs.append(Ref("action", f"{m.group(2) or ''}|{m.group(1)}", i, page.id))
+        for m in _PATH_ACTION.finditer(line):
+            result.refs.append(Ref("action", f"{ctrl}|{m.group(1)}", i, page.id))
+    if any(r.kind == "action" for r in result.refs):
+        result.symbols.append(page)

@@ -14,8 +14,14 @@ _SCOPES = {
     "method_declaration", "constructor_declaration", "destructor_declaration", "operator_declaration",
     "indexer_declaration", "property_declaration",
 }
-_TASK = re.compile(r"^(?:[\w.]+\.)?(?:Task|ValueTask)\s*<(.+)>$")
+_TASK = re.compile(r"^(?:[\w.]+\.)?(?:Task|ValueTask|Lazy)\s*<(.+)>$")
 _OUTER = re.compile(r"^([\w.]+)\s*(?:<.*>)?$", re.S)
+_ELEM = re.compile(r"^(?:[\w.]+\.)?(?:IEnumerable|IList|List|ICollection|IReadOnlyList|IReadOnlyCollection|HashSet|ISet"
+                   r"|IQueryable)\s*<(.+)>$", re.S)
+# LINQ calls whose result has the same element type as their source
+_KEEP_ELEM = {"Where", "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "ToList", "ToArray", "AsEnumerable",
+              "Skip", "Take", "Distinct", "Reverse"}
+_CLASSES = {"class_declaration", "struct_declaration", "record_declaration", "interface_declaration"}
 
 
 @dataclass
@@ -33,7 +39,7 @@ class CallSite:
 
 def norm_type(text: str) -> str:
     """Outer type name without namespace, generic arguments, nullability or array brackets.
-    ``Task<T>`` / ``ValueTask<T>`` become ``T`` (the type a caller works with after ``await``)."""
+    ``Task<T>`` / ``ValueTask<T>`` / ``Lazy<T>`` become ``T`` (the type a caller works with after ``await`` / ``.Value``)."""
     t = (text or "").strip()
     t = re.sub(r"^(?:ref|out|in|readonly|const|params)\s+", "", t)
     t = t.replace("global::", "")
@@ -47,6 +53,15 @@ def norm_type(text: str) -> str:
         return ""
     m = _OUTER.match(t)
     return m.group(1).split(".")[-1] if m else ""
+
+
+def elem_type(text: str) -> str:
+    """Element type of a collection type (``IEnumerable<T>``, ``List<T>``, ``T[]`` ...), else ""."""
+    t = re.sub(r"\?$", "", (text or "").strip())
+    if t.endswith("[]"):
+        return norm_type(t[:-2])
+    m = _ELEM.match(t)
+    return norm_type(m.group(1)) if m else ""
 
 
 def _text(n, src: bytes) -> str:
@@ -94,9 +109,58 @@ class _Calls:
         spans.sort(key=lambda t: (t[0], t[1].start))
         self.spans = [s for _, s in spans]
         self.out: list[CallSite] = []
+        self._field_types: dict[int, dict[str, str]] = {}
 
     def text(self, n) -> str:
         return _text(n, self.src)
+
+    def _class_member_types(self, scope) -> dict[str, str]:
+        """Declared type text of the fields and properties of the class enclosing ``scope``."""
+        cls = scope.parent
+        while cls is not None and cls.type not in _CLASSES:
+            cls = cls.parent
+        if cls is None:
+            return {}
+        if cls.id not in self._field_types:
+            types: dict[str, str] = {}
+            body = cls.child_by_field_name("body")
+            for m in (body.named_children if body is not None else ()):
+                if m.type == "property_declaration":
+                    t, nm = m.child_by_field_name("type"), m.child_by_field_name("name")
+                    if t is not None and nm is not None:
+                        types[self.text(nm)] = self.text(t)
+                elif m.type == "field_declaration":
+                    for vd in m.named_children:
+                        if vd.type != "variable_declaration":
+                            continue
+                        t = vd.child_by_field_name("type")
+                        for d in vd.named_children:
+                            if d.type != "variable_declarator":
+                                continue
+                            ident = next((c for c in d.named_children if c.type == "identifier"), None)
+                            if t is not None and ident is not None:
+                                types[self.text(ident)] = self.text(t)
+            self._field_types[cls.id] = types
+        return self._field_types[cls.id]
+
+    def _foreach_elem(self, expr, raw: dict, scope) -> str:
+        """Element type of ``foreach (var x in <expr>)`` when <expr> is a collection variable, field or property,
+        optionally filtered by LINQ calls that keep the element type."""
+        n = self._unwrap(expr)
+        while n is not None and n.type == "invocation_expression":
+            func = n.child_by_field_name("function")
+            if func is None or func.type != "member_access_expression" or self._method_name(func, self.text) not in _KEEP_ELEM:
+                return ""
+            n = self._unwrap(func.child_by_field_name("expression"))
+        if n is not None and n.type == "member_access_expression":
+            inner = n.child_by_field_name("expression")
+            if inner is None or inner.type != "this_expression":
+                return ""
+            n = n.child_by_field_name("name")
+        if n is None or n.type != "identifier":
+            return ""
+        name = self.text(n)
+        return elem_type(raw.get(name) or self._class_member_types(scope).get(name, ""))
 
     def locate(self, line: int):
         for s in self.spans:
@@ -140,6 +204,7 @@ class _Calls:
 
     def collect_locals(self, scope) -> dict:
         env: dict[str, str] = {}
+        raw: dict[str, str] = {}  # declared type text, for foreach element types
         plist = scope.child_by_field_name("parameters")
         if plist is not None:
             for p in plist.named_children:
@@ -147,6 +212,7 @@ class _Calls:
                     t, nm = p.child_by_field_name("type"), p.child_by_field_name("name")
                     if t is not None and nm is not None:
                         self._set(env, self.text(nm), norm_type(self.text(t)))
+                        raw[self.text(nm)] = self.text(t)
         stack = list(scope.children)
         while stack:
             n = stack.pop()
@@ -167,10 +233,16 @@ class _Calls:
                             init = c
                     typ = declared if not implicit else (self._infer_initializer(init, env) if init is not None else "")
                     self._set(env, self.text(ident), typ)
+                    if not implicit:
+                        raw[self.text(ident)] = self.text(tnode)
             elif ty == "foreach_statement":
                 tnode, left = n.child_by_field_name("type"), n.child_by_field_name("left")
                 if left is not None and left.type == "identifier":
-                    typ = "" if (tnode is None or tnode.type == "implicit_type") else norm_type(self.text(tnode))
+                    if tnode is None or tnode.type == "implicit_type":
+                        right = n.child_by_field_name("right")
+                        typ = self._foreach_elem(right, raw, scope) if right is not None else ""
+                    else:
+                        typ = norm_type(self.text(tnode))
                     self._set(env, self.text(left), typ)
             elif ty == "catch_declaration":
                 kids = list(n.named_children)
@@ -220,6 +292,10 @@ class _Calls:
             nm = n.child_by_field_name("name")
             if inner is not None and inner.type == "this_expression" and nm is not None:
                 return "member", self.text(nm), "", ""
+            if inner is not None and inner.type == "identifier" and nm is not None and self.text(nm) == "Value":
+                # ponytail: x.Value is read as x (Lazy<T> / Nullable<T> already normalised to T); any other type's
+                # .Value resolves to that type, usually outside the index, so the call gets no edge
+                return self._classify_receiver(inner, env, depth)
             return "expr", "", "", ""
         if t == "object_creation_expression":
             tn = n.child_by_field_name("type")

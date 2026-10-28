@@ -49,18 +49,20 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 | Topology | `using` / `import` 解析为文件依赖；继承（base list）；类型使用（`invocation`）。存放在 `dependencies` 表 |
 | Semantic | 代码块嵌入 384 维，存入 `vss_chunks`；查询时用 FTS5 关键字、符号名称、向量三路做 Reciprocal Rank Fusion，再展开前 3 名文件的依赖邻居 |
 
-编码：先尝试 UTF-8，再尝试 Big5、cp1252。单个文件超过 5MB 不索引；遵守根目录与子目录的 `.gitignore`；固定跳过 `.git`、`bin`、`obj`、`node_modules` 等。
+编码：先尝试 UTF-8，再尝试 Big5、cp1252。单个文件超过 5MB 不索引；遵守根目录与子目录的 `.gitignore`；固定跳过 `.git`、`bin`、`obj`、`node_modules` 等。`*.min.js` / `*.min.css` 也跳过。已提交进仓库的第三方或生成的代码可用 `.ai_context/ignore`（gitignore 语法）排除，例如 `Scripts/*`、`!Scripts/Custom/`、`Web References/`（EF database-first 生成的 model 不要排除，DbSet 声明在它的 DbContext 里）。
 
 ## 与规格的差异
 
 - **向量存储**：规格中的 `sqlite-vss` 需要原生扩展且已停止维护，这里 `vss_chunks` 改为存 float32 BLOB，用 numpy 暴力计算 cosine，不需要额外安装扩展。
-- **嵌入模型**：默认是内置的 hashing 嵌入（标识符拆词、双词组、中文双字），快速、可复现，但**不理解同义词**。要使用真正的 transformer，把 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 导出为 ONNX，安装 `onnxruntime`、`tokenizers`，并设置 `INDEXER_ONNX_MODEL=<包含 model.onnx 与 tokenizer.json 的文件夹>`（加载、补齐、池化与重建索引的逻辑已用一个小型合成模型测试过；真实模型的检索质量尚未度量，设置好变量后请运行 `python benchmarks/run_benchmark.py --compare benchmarks/baseline.json` 验证；目前使用平均池化，适合 MiniLM，bge 系列建议使用 CLS 池化）。切换嵌入后会自动重建索引。
-- **C# 调用关系**以有限度的类型推断解析（using / namespace、字段与构造函数注入的类型、局部变量、接口对应实现），每条关系都标置信等级：`confirmed`（接收者类型已知）、`probable`（经由接口或唯一候选）、`candidate`（仅名称相符）。没有 Roslyn，所以不做按参数类型的重载解析、不处理委托 / lambda / 扩展方法，调用链只追一层。继承关系来自 AST，可靠。
+- **嵌入模型**：默认是内置的 hashing 嵌入（标识符拆词、双词组、中文双字），快速、可复现，但**不理解同义词**。要使用真正的 transformer，把 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 导出为 ONNX，安装 `onnxruntime`、`tokenizers`，并设置 `INDEXER_ONNX_MODEL=<包含 model.onnx 与 tokenizer.json 的文件夹>`（目前使用平均池化，适合 MiniLM，bge 系列建议使用 CLS 池化）。切换嵌入后会自动重建索引。实测（0.4.0）：`all-MiniLM-L6-v2` 让 benchmark MRR 提高 0.08–0.13，但在真实的 3 万 chunk C# / 中文注释项目上，换个说法的查询反而比 hashing 差（MRR 0.29 对 0.48；多语 MiniLM-L12 为 0.41），完整建索引从 2 分钟变成 35–43 分钟。因此默认维持 hashing；领域术语用 `.ai_context/synonyms.json` 比通用模型有效。
+- **C# 调用关系**以有限度的类型推断解析（using / namespace、字段与构造函数注入的类型、`Lazy<T>.Value`、局部变量、`foreach (var x in items.Where(..))` 的元素类型、接口对应实现），每条关系都标置信等级：`confirmed`（接收者类型已知）、`probable`（经由接口或唯一候选）、`candidate`（仅名称相符）。没有 Roslyn，所以不做按参数类型的重载解析、不处理委托 / lambda / 扩展方法，调用链只追一层。继承关系来自 AST，可靠。
 - 额外增加了 `symbols.qualified_name`、`chunk_metadata.symbol_id`、`raw_refs`、`chunks_fts` 与 `meta` 表。
 
 ## 数据访问（SQL）
 
-`data-access <数据表或存储过程>` 回答“谁写入 / 读取 / 执行 X”。数据来源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含别名解析，排除 CTE、临时表、系统对象）、C# 的 SQL 字符串（字面值、`+`、字符串插值、`string.Format`、常量、局部变量）经 Dapper、`SqlCommand` 或 EF `FromSql` 发出、配合 `CommandType.StoredProcedure` 的存储过程名称，以及 EF 的 `ToTable` / `[Table]` 映射。调用某存储过程的代码视为该过程所写数据表的间接写入者（最多追 4 层）。每条都有置信等级；**动态 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值组成的 SQL）无法解析，会单独列为 `uncertain`**，不会混进确定的清单。已知缺口：`FROM a JOIN b ON ..., c` 会漏掉 `c`；把存储过程名称传给非数据库方法时看不到。
+`data-access <数据表或存储过程>` 回答“谁写入 / 读取 / 执行 X”。数据来源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含别名解析，排除 CTE、临时表、系统对象）、C# 的 SQL 字符串（字面值、`+`、字符串插值、`string.Format`、常量、局部变量、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）经 Dapper、`SqlCommand` 或 EF `FromSql` 发出、配合 `CommandType.StoredProcedure` 的存储过程名称、对 `DbSet<T>` 成员的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比对成员名称，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 映射。调用某存储过程的代码视为该过程所写数据表的间接写入者（最多追 4 层）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 调用往上追到 `*Controller` 方法（最多 8 层），（实现方法也会接到它所实现接口方法的调用者，涵盖 `foreach (var step in steps) step.Run()` 这种管线），按 controller 文件分组，并列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向这些 action 的 Razor 页面（`.cshtml`），查一张表就知道哪些画面会动到它。方法读了某 DbSet 又调用 `SaveChanges`、但没有明确 `Add` / `Remove` 时，可能是在更新跟踪中的实体，列为可能（`uncertain`）写入者。每条都有置信等级；**动态 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值组成的 SQL）无法解析，会单独列为 `uncertain`**，不会混进确定的清单。已知缺口：`FROM a JOIN b ON ..., c` 会漏掉 `c`；把存储过程名称传给非数据库方法时看不到。
+
+只存在数据库里的存储过程，可导出到仓库外的文件夹，再写进 `.ai_context/extra_roots`（一行一个文件夹，绝对路径或相对于项目根目录）；这些文件以绝对路径索引。
 
 自然语言搜索遇到“谁修改 MES_ScrapRecord”“哪些程序会写入 MES_Lot”这类问题，会先走这个索引。
 

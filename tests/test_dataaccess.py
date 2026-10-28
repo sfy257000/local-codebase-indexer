@@ -102,6 +102,18 @@ def test_callers_are_resolved_with_confidence_not_by_name(tools):
     assert impl and all(c["confidence"] != "confirmed" for c in impl)  # reached through the interface
 
 
+def test_programs_roll_up_controller_actions(tools):
+    progs = {p["program"]: p for p in tools.data_access("MES_ScrapRecord")["programs"]}
+    assert "Scrap" in progs and "write" in progs["Scrap"]["access"] and "Create" in progs["Scrap"]["actions"]
+
+
+def test_relations_accepts_type_dot_method(tools):
+    res = tools.symbol_relations("ScrapService.Save", "upstream")
+    assert [d["qualified_name"] for d in res["definitions"]] == ["Acme.Mes.Services.ScrapService.Save"]
+    full = tools.symbol_relations("Acme.Mes.Services.LotService.Save", "upstream")
+    assert [d["qualified_name"] for d in full["definitions"]] == ["Acme.Mes.Services.LotService.Save"]
+
+
 def test_synonym_expansion_and_project_override(tmp_path):
     e = Expander()
     assert {"procedure", "proc"} <= set(e.expand("SP that inserts scrap records"))
@@ -142,3 +154,192 @@ namespace E {
         assert sum(r["file_path"].endswith("SFC_MLotRepository.cs") for r in top) >= 3, q
         assert any((r.get("data_access") or {}).get("access") == "write" for r in top), q
     t.indexer.close()
+
+
+SB_REPO = '''using System.Text;
+namespace Acme.Repo
+{
+    public class MlotRepository
+    {
+        private readonly IDbContext _ctx;
+        public int Insert(Lot lot)
+        {
+            StringBuilder sql = new StringBuilder();
+            sql.Append(" INSERT INTO SFC_Mlot (LotId, Qty) ");
+            sql.Append(" VALUES (@lotId, @qty) ");
+            return _ctx.Execute(sql.ToString(), lot);
+        }
+        public Lot[] Get(string id)
+        {
+            var sb = new StringBuilder("SELECT * ");
+            sb.AppendLine("FROM SFC_Mlot a").Append("JOIN SFC_Log b ON b.Id = a.Id ");
+            string text = sb.ToString();
+            return _ctx.Query<Lot>(text, new { id });
+        }
+        public void Twice()
+        {
+            var sb = new StringBuilder();
+            sb.Append("DELETE FROM SFC_Old WHERE Id = @id");
+            _ctx.Execute(sb.ToString(), null);
+            sb.Clear();
+            sb.AppendFormat("UPDATE {0} SET Qty = 0 WHERE Id = @id", "SFC_Cur");
+            _ctx.Execute(sb.ToString(), null);
+        }
+    }
+}
+'''
+
+
+def test_stringbuilder_sql_is_tracked(tmp_path):
+    (tmp_path / "MlotRepository.cs").write_text(SB_REPO, encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        w = {(e["source"].rsplit(".", 1)[-1], e["op"], e["confidence"]) for e in t.data_access("SFC_Mlot")["writers"]}
+        assert ("Insert", "insert", "confirmed") in w
+        r = {(e["source"].rsplit(".", 1)[-1], e["confidence"]) for e in t.data_access("SFC_Mlot")["readers"]}
+        assert ("Get", "confirmed") in r
+        assert any(e["source"].endswith("Get") for e in t.data_access("SFC_Log")["readers"])
+        assert any(e["op"] == "delete" for e in t.data_access("SFC_Old")["writers"])
+    finally:
+        t.indexer.close()
+
+
+EF_FILES = {
+    "Ctx.cs": '''namespace Acme { public class Ctx : DbContext {
+    public virtual DbSet<CamLog> TCM_CamLog { get; set; }
+    public virtual DbSet<Shipment> Shipments { get; set; }
+} }
+''',
+    "Map.cs": '''namespace Acme { public class Model { void Build(DbModelBuilder mb) { mb.Entity<Shipment>().ToTable("MES_Ship"); } } }
+''',
+    "Ctl.cs": '''namespace Acme { public class Ctl {
+    Ctx IMES = new Ctx();
+    public void Save(CamLog log, Order o) {
+        var old = IMES.TCM_CamLog.Where(a => a.Id == 1).ToList();
+        IMES.TCM_CamLog.Add(log);
+        o.Lines.Add(log);
+        var q = from s in IMES.Shipments where s.Id == 1 select s;
+    }
+    public void Rename(int id) {
+        var log = IMES.TCM_CamLog.Find(id);
+        log.Name = "x";
+        IMES.SaveChanges();
+    }
+} }
+''',
+}
+
+
+def test_ef_linq_on_dbset_members_is_data_access(tmp_path):
+    for rel, content in EF_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        res = t.data_access("TCM_CamLog")
+        assert {(e["source"].rsplit(".", 1)[-1], e["op"]) for e in res["writers"]} == {("Save", "insert")}
+        assert any(e["source"].endswith("Save") for e in res["readers"])
+        assert t.data_access("Shipments")["found"] is False  # resolved to its mapped table name
+        # Shipment is mapped to MES_Ship
+        mapped = t.data_access("MES_Ship")["readers"]
+        assert any(e["source"].endswith("Save") and e["via"] == "ef_linq" for e in mapped)
+        # o.Lines is not a DbSet, raw candidates never surface
+        assert t.data_access("Lines")["found"] is False
+        # tracked entity + SaveChanges: a possible update, kept out of the writers
+        possible = t.data_access("TCM_CamLog")["possible"]
+        assert [(e["source"].rsplit(".", 1)[-1], e["op"]) for e in possible] == [("Rename", "update")]
+    finally:
+        t.indexer.close()
+
+
+PIPE_FILES = {
+    "Steps.cs": '''namespace Acme {
+public interface IStep { void Process(int id); }
+public class WriteLot : IStep { IDb _db;
+    public void Process(int id) { _db.Execute("DELETE FROM MES_Pipe WHERE Id = @id", new { id }); } }
+public class Other : IStep { public void Process(int id) { } }
+public interface IWipApp { void Run(int id); }
+public class WipApp : IWipApp { IStep[] _steps;
+    public void Run(int id) { foreach (var s in _steps) s.Process(id); } }
+}
+''',
+    "WK0001Controller.cs": '''using System;
+namespace Acme { public class WK0001Controller { Lazy<IWipApp> _app;
+    public void Save(int id) { _app.Value.Run(id); } } }
+''',
+}
+
+
+def test_programs_follow_lazy_value_and_interface_pipelines(tmp_path):
+    for rel, content in PIPE_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        callers = t.symbol_relations("IWipApp.Run", "upstream")["definitions"][0]["upstream"]["callers"]
+        assert [(c["symbol"], c["confidence"]) for c in callers] == [("Acme.WK0001Controller.Save", "confirmed")]
+        progs = t.data_access("MES_Pipe")["programs"]
+        assert [(p["program"], p["access"], p["actions"]) for p in progs] == [("WK0001", ["write"], ["Save"])]
+    finally:
+        t.indexer.close()
+
+
+def test_razor_page_url_action_links_to_controller_action(tmp_path):
+    for rel, content in PIPE_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    page = tmp_path / "Views" / "WK0001" / "WK0001.cshtml"
+    page.parent.mkdir(parents=True)
+    page.write_text('<script>\nfetch(\'@Url.Action("Save")\', { method: "POST" });\n'
+                    'var u = "@Url.Action("Run", "Missing")";\n</script>\n', encoding="utf-8")
+    ng = tmp_path / "Views" / "Shared" / "Legacy.cshtml"  # AngularJS: controller named in the page, not the folder
+    ng.parent.mkdir(parents=True)
+    ng.write_text("$scope.Controller = 'WK0001';\n$http.post($scope.ControllerPath + 'Save', {});\n", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        callers = t.symbol_relations("WK0001Controller.Save", "upstream")["definitions"][0]["upstream"]["callers"]
+        assert sorted((c["file_path"], c["line"], c["confidence"]) for c in callers) == [
+            ("Views/Shared/Legacy.cshtml", 2, "confirmed"), ("Views/WK0001/WK0001.cshtml", 2, "confirmed")]
+        assert t.data_access("MES_Pipe")["programs"][0]["pages"] == [
+            "Views/Shared/Legacy.cshtml", "Views/WK0001/WK0001.cshtml"]
+    finally:
+        t.indexer.close()
+
+
+def test_program_code_plus_verb_finds_the_method_in_that_program(tmp_path):
+    svc = "namespace E {{ public class {0}Service {{\n public void GetRecords() {{ }}\n public void SetRecord() {{ }}\n" \
+          " public void DeleteRecord() {{ }}\n}} }}\n"
+    (tmp_path / "Services").mkdir()
+    for code in ("WD0096", "WD0001", "WD0002", "WD0003"):
+        (tmp_path / "Services" / f"{code}Service.cs").write_text(svc.format(code), encoding="utf-8")
+    (tmp_path / "WD0096Controller.cs").write_text(
+        "namespace E { public class WD0096Controller { public void WD0096() { } } }\n", encoding="utf-8")
+    (tmp_path / ".ai_context").mkdir()
+    (tmp_path / ".ai_context" / "synonyms.json").write_text('{"groups": [["setrecord", "存檔"]]}', encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        top = t.semantic_search("WD0096 存檔", limit=3)["results"]
+        assert top[0]["symbol"] == "E.WD0096Service.SetRecord"
+    finally:
+        t.indexer.close()
+
+
+def test_extra_roots_index_exported_sql_outside_the_project(tmp_path):
+    proj, sql = tmp_path / "proj", tmp_path / "sql_export"
+    (proj / ".ai_context").mkdir(parents=True)
+    sql.mkdir()
+    (sql / "usp_X.sql").write_text("CREATE PROCEDURE usp_X AS\nUPDATE MES_X SET Qty = 0\nGO\n", encoding="utf-8")
+    (proj / "Repo.cs").write_text('''using System.Data;
+namespace E { public class Repo { IDbConnection _db;
+    public void Run() { _db.Execute("usp_X", commandType: CommandType.StoredProcedure); } } }
+''', encoding="utf-8")
+    (proj / ".ai_context" / "extra_roots").write_text("# exported SPs\n../sql_export\n", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("no", encoding="utf-8")
+    t = CodebaseTools(str(proj))
+    try:
+        w = t.data_access("MES_X")["writers"]
+        assert {e["source"].rsplit(".", 1)[-1] for e in w} >= {"usp_X", "Run"}  # Run: indirect through the SP
+        sql_path = next(e["file_path"] for e in w if e["source"].endswith("usp_X"))
+        assert sql_path == (sql / "usp_X.sql").as_posix()
+        assert "UPDATE MES_X" in t.optimized_context(sql_path, [2], 1)["context"]
+        with pytest.raises(ValueError):
+            t.optimized_context(str(tmp_path / "secret.txt"), [1], 1)
+    finally:
+        t.indexer.close()

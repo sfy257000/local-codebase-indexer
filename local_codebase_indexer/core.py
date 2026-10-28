@@ -117,6 +117,7 @@ class Indexer:
             dbmod.set_meta(conn, "embedder", self.embedder.name)
             dbmod.set_meta(conn, "index_version", dbmod.INDEX_VERSION)
             conn.commit()
+            conn.execute("VACUUM")  # return the old index's pages to the file system
 
         existing = {r["file_path"]: (r["last_modified"], r["md5_hash"]) for r in
                     conn.execute("SELECT file_path, last_modified, md5_hash FROM files")}
@@ -140,6 +141,7 @@ class Indexer:
                 stats.warnings.append(f"{sf.rel_path}: {exc}")
                 continue
             if b"\x00" in data[:8192]:
+                seen.discard(sf.rel_path)  # drop any earlier entry for it
                 stats.skipped += 1
                 continue
             md5 = hashlib.md5(data).hexdigest()
@@ -173,6 +175,8 @@ class Indexer:
         if changed or force:
             resolve_dependencies(conn)
             resolve_calls(conn)
+            resolve_page_actions(conn)
+            resolve_ef_access(conn)
         self._record_run_meta()
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
@@ -273,6 +277,82 @@ def _resolve_relative(source: str, spec: str, files: set[str]) -> str | None:
     return None
 
 
+def _view_route(page_path: str) -> tuple[str, str | None]:
+    """(controller, area) a Razor page belongs to: ``Areas/<area>/Views/<controller>/x.cshtml`` or
+    ``Views/<controller>/x.cshtml``; area None outside Areas."""
+    parts = page_path.split("/")
+    ctrl = parts[parts.index("Views") + 1] if "Views" in parts[:-2] else ""
+    area = parts[parts.index("Areas") + 1] if "Areas" in parts[:-1] else None
+    return ctrl, area
+
+
+def resolve_page_actions(conn: sqlite3.Connection) -> None:
+    """Add ``calls`` edges from Razor pages to the controller actions their ``Url.Action(..)`` targets."""
+    by_action: dict[str, list[sqlite3.Row]] = defaultdict(list)
+    for r in conn.execute("SELECT id, symbol_name, qualified_name, file_path FROM symbols WHERE symbol_type='method' "
+                          "AND qualified_name LIKE '%Controller.%'"):
+        by_action[r["symbol_name"]].append(r)
+    rows = []
+    for r in conn.execute("SELECT r.file_path, r.name, r.line, r.owner FROM raw_refs r WHERE r.kind='action'"):
+        ctrl, action = r["name"].split("|", 1)
+        own_ctrl, area = _view_route(r["file_path"])
+        ctrl = ctrl or own_ctrl
+        if not ctrl:
+            continue
+        cands = [m for m in by_action.get(action, ()) if m["qualified_name"].split(".")[-2] == ctrl + "Controller"]
+        if area is not None:
+            same_area = [m for m in cands if f"/Areas/{area}/" in "/" + m["file_path"]]
+        else:
+            same_area = [m for m in cands if "/Areas/" not in "/" + m["file_path"]]
+        cands = same_area or cands
+        for m in cands:
+            rows.append((r["owner"], m["id"], r["file_path"], r["line"], "confirmed" if len(cands) == 1 else "probable",
+                         "Url.Action in page"))
+    conn.executemany("INSERT INTO calls(caller_id, callee_id, file_path, line, confidence, reason) VALUES(?,?,?,?,?,?)",
+                     rows)
+
+
+_DBSET = re.compile(r"\bI?DbSet<\s*([\w.]+)\s*>")
+
+
+def resolve_ef_access(conn: sqlite3.Connection) -> None:
+    """Turn ``ef_raw`` candidates whose member is a declared ``DbSet<T>`` into ``ef_linq`` table accesses.
+    Table = the EF mapping of T (``ToTable`` / ``[Table]``) when there is one, else the DbSet property name.
+    A method that reads a DbSet and calls ``SaveChanges`` without an explicit Add / Remove on it may update tracked
+    entities: that becomes an ``uncertain`` write (listed as possible, never as a confirmed writer)."""
+    conn.execute("DELETE FROM data_access WHERE via='ef_linq'")
+    dbsets: dict[str, str] = {}
+    for r in conn.execute("SELECT symbol_name, signature FROM symbols WHERE symbol_type='property' AND signature LIKE '%DbSet<%'"):
+        m = _DBSET.search(r[1] or "")
+        if m:
+            dbsets[r[0].lower()] = m.group(1).split(".")[-1]
+    if not dbsets:
+        return
+    mapped = {r[0].split(".")[-1]: r[1] for r in conn.execute(
+        "SELECT detail, target_name FROM data_access WHERE via='ef_mapping' AND detail != ''")}
+    rows = []
+    for r in conn.execute("SELECT * FROM data_access WHERE via='ef_raw'").fetchall():
+        entity = dbsets.get(r["target_key"][3:])
+        if entity is None:
+            continue
+        table = mapped.get(entity, r["target_name"])
+        rows.append((r["file_path"], r["source_id"], r["line"], table.lower(), table, "", "table", r["access"],
+                     r["op"], "ef_linq", "probable", r["evidence"], entity))
+    savers = {r[0]: (r[1], r[2]) for r in conn.execute(
+        "SELECT source_id, line, evidence FROM data_access WHERE via='ef_raw' AND target_key='ef:#savechanges' "
+        "AND source_id IS NOT NULL")}
+    written = {(r[1], r[3]) for r in rows if r[7] == "write"}
+    for r in list(rows):
+        if r[7] == "read" and r[1] in savers and (r[1], r[3]) not in written:
+            written.add((r[1], r[3]))
+            line, evidence = savers[r[1]]
+            rows.append((r[0], r[1], line, r[3], r[4], "", "table", "write", "update", "ef_linq", "uncertain",
+                         f"tracked {r[4]} entities + {evidence}", r[12]))
+    conn.executemany(
+        "INSERT INTO data_access(file_path, source_id, line, target_key, target_name, qualifier, target_kind, access,"
+        " op, via, confidence, evidence, detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+
+
 def resolve_dependencies(conn: sqlite3.Connection) -> None:
     """Rebuild the file-level dependency graph from raw_refs and symbols."""
     conn.execute("DELETE FROM dependencies")
@@ -289,6 +369,15 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
     for r in conn.execute("SELECT symbol_name, file_path FROM symbols WHERE symbol_type='namespace'"):
         ns_files[r[0]].add(r[1])
 
+    # a namespace import only links to the files in it whose types the importing file names
+    file_types: dict[str, set[str]] = defaultdict(set)
+    for name, paths in type_files.items():
+        for p in paths:
+            file_types[p].add(name)
+    used: dict[str, set[str]] = defaultdict(set)
+    for r in conn.execute("SELECT file_path, name FROM raw_refs WHERE kind IN ('ident', 'base')"):
+        used[r[0]].add(r[1])
+
     deps: set[tuple[str, str, str]] = set()
 
     for r in conn.execute("SELECT file_path, name FROM raw_refs WHERE kind='import'"):
@@ -299,7 +388,7 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
             if t:
                 targets.add(t)
         elif name in ns_files:
-            targets |= ns_files[name]
+            targets |= {t for t in ns_files[name] if file_types[t] & used[src]}
         else:
             slug = name.replace(".", "/")
             for cand in (slug + ".py", slug + "/__init__.py"):

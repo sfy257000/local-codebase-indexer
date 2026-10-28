@@ -3,7 +3,9 @@
 Direct accesses come from the ``data_access`` table. Indirect ones follow SQL objects: if procedure P writes
 table T, then everything that executes P (C# code or other procedures) is an indirect writer of T, found up to
 ``MAX_DEPTH`` hops. Accesses with ``uncertain`` confidence (dynamic SQL) are never mixed into the confirmed lists;
-they are reported as ``possible``. Call chains between C# methods are not followed here, use ``relations``.
+they are reported as ``possible``. ``programs`` follows confirmed / probable C# calls upward from the accessing
+methods to controller actions (up to ``ENTRY_DEPTH`` hops), groups them per controller file and lists the Razor
+pages whose ``Url.Action`` targets those actions.
 """
 
 from __future__ import annotations
@@ -13,7 +15,9 @@ import sqlite3
 from collections import deque
 
 MAX_DEPTH = 4
+ENTRY_DEPTH = 8
 LIST_CAP = 200
+_METHOD_KINDS = ("method", "constructor", "function")
 SQL_OBJECT_KINDS = ("table", "procedure", "view", "function")
 _CONF = {"confirmed": 0, "probable": 1, "uncertain": 2}
 
@@ -53,7 +57,8 @@ def detect_intents(query: str) -> set[str]:
 
 
 def known_object_keys(conn: sqlite3.Connection) -> set[str]:
-    keys = {r[0] for r in conn.execute("SELECT DISTINCT target_key FROM data_access WHERE target_key != '?'")}
+    keys = {r[0] for r in conn.execute(
+        "SELECT DISTINCT target_key FROM data_access WHERE target_key != '?' AND via != 'ef_raw'")}
     keys |= {r[0].lower() for r in conn.execute(
         f"SELECT symbol_name FROM symbols WHERE symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))})",
         SQL_OBJECT_KINDS)}
@@ -167,6 +172,64 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
             "executes": _sort(execs)[:LIST_CAP], "dynamic_sql": _sort(dynamic)[:LIST_CAP]}
 
 
+def _program(sym: sqlite3.Row) -> str | None:
+    """Controller file label (``WD0096Controller.cs`` / ``WK0019.cs`` -> ``WD0096`` / ``WK0019``) for a method of a
+    ``*Controller`` class, else None."""
+    parts = (sym["qualified_name"] or "").split(".")
+    if len(parts) < 2 or not parts[-2].endswith("Controller"):
+        return None
+    stem = sym["file_path"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return stem[:-len("Controller")] if stem.endswith("Controller") and stem != "Controller" else stem
+
+
+def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> list[dict]:
+    """Controller actions that reach the accessing methods through the C# call graph, one entry per program."""
+    queue = deque()
+    for e in entries:
+        if e["source_type"] in _METHOD_KINDS and e["access"] in ("read", "write", "exec"):
+            queue.append((e["source_id"], e["access"], 0, e["confidence"]))
+    seen: set[tuple[str, str]] = set()
+    progs: dict[str, dict] = {}
+    while queue:
+        sid, access, depth, conf = queue.popleft()
+        if (sid, access) in seen:
+            continue
+        seen.add((sid, access))
+        sym = lk.symbol(sid)
+        if sym is None:
+            continue
+        label = _program(sym)
+        if label is not None:
+            p = progs.setdefault(label, {"program": label, "file_path": sym["file_path"], "access": set(),
+                                         "actions": set(), "confidence": conf, "ids": set()})
+            p["access"].add(access)
+            p["actions"].add(sym["symbol_name"])
+            p["ids"].add(sid)
+            if _CONF[conf] < _CONF[p["confidence"]]:
+                p["confidence"] = conf
+            continue
+        if depth >= ENTRY_DEPTH:
+            continue
+        for r in conn.execute(
+                "SELECT caller_id, confidence FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
+                (sid,)):
+            queue.append((r["caller_id"], access, depth + 1, max(conf, r["confidence"], key=_CONF.__getitem__)))
+        # callers of the interface method this one implements may dispatch here (pipelines: foreach step.Run())
+        for r in conn.execute(
+                "SELECT im.id FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
+                "JOIN symbols i ON i.symbol_name = b.name AND i.symbol_type = 'interface' "
+                "JOIN symbols im ON im.parent_id = i.id AND im.symbol_name = m.symbol_name WHERE m.id = ?", (sid,)):
+            queue.append((r["id"], access, depth + 1, max(conf, "probable", key=_CONF.__getitem__)))
+    out = []
+    for p in sorted(progs.values(), key=lambda p: p["program"]):
+        ids = sorted(p.pop("ids"))
+        pages = sorted({r[0] for r in conn.execute(
+            f"SELECT s.file_path FROM calls c JOIN symbols s ON s.id = c.caller_id WHERE s.symbol_type = 'page' "
+            f"AND c.callee_id IN ({','.join('?' * len(ids))})", ids)})
+        out.append({**p, "access": sorted(p["access"]), "actions": sorted(p["actions"]), "pages": pages})
+    return out
+
+
 def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX_DEPTH) -> dict:
     key = object_key(object_name)
     lk = _Lookup(conn)
@@ -174,7 +237,8 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
     rows = conn.execute("SELECT * FROM data_access WHERE target_key=? ORDER BY file_path, line", (key,)).fetchall()
     if not defs and not rows:
         like = [r[0] for r in conn.execute(
-            "SELECT DISTINCT target_name FROM data_access WHERE target_key LIKE ? AND target_key != '?' LIMIT 10",
+            "SELECT DISTINCT target_name FROM data_access WHERE target_key LIKE ? AND target_key != '?' "
+            "AND via != 'ef_raw' LIMIT 10",
             (f"%{key}%",))]
         like += [r[0] for r in conn.execute(
             f"SELECT DISTINCT symbol_name FROM symbols WHERE symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
@@ -202,6 +266,7 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         "executed_by": pick("exec")[:LIST_CAP],
         "mapped_by": _sort([e for e in confirmed if e["access"] == "map"]),
         "possible": _sort(possible)[:LIST_CAP],
+        "programs": _programs(conn, lk, confirmed + indirect),
         "notes": [],
     }
     if kind in ("procedure", "function", "view") and defs:
@@ -212,8 +277,8 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         if word.search(r["evidence"] or ""):
             result["possible"].append(lk.entry(r))
     result["notes"].append(
-        "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. C# call chains are not "
-        "followed; use the relations tool for who calls a C# method.")
+        "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / "
+        f"probable C# calls up to {ENTRY_DEPTH} hops to *Controller methods; use relations for a single method's callers.")
     return result
 
 

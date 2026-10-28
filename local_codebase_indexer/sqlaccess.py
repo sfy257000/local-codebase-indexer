@@ -60,7 +60,7 @@ class Access:
     access: str       # read | write | exec | map
     op: str           # select | insert | update | delete | merge | truncate | into | exec | dynamic | map
     line: int
-    via: str          # sql | dynamic_sql | csharp_sql | csharp_sp | ef_mapping
+    via: str          # sql | dynamic_sql | csharp_sql | csharp_sp | ef_mapping | ef_raw (unresolved) | ef_linq
     confidence: str   # confirmed | probable | uncertain
     evidence: str = ""
     detail: str = ""

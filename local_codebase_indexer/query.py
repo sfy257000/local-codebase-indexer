@@ -14,7 +14,7 @@ from . import dataflow
 from . import db as dbmod
 from .callgraph import CONF_ORDER
 from .core import Indexer, cjk_bigrams, git_info
-from .scanner import iter_files
+from .scanner import extra_roots, iter_files
 from .embedder import split_identifier
 from .synonyms import Expander
 
@@ -45,6 +45,13 @@ def _query_terms(query: str) -> list[str]:
         if t not in _STOPWORDS and t not in out and len(t) > 1:
             out.append(t)
     return out
+
+
+def _inside(path: str, base: str) -> bool:
+    try:
+        return os.path.commonpath([path, base]) == base
+    except ValueError:  # different drives on Windows
+        return False
 
 
 def _has_word(term: str, text: str) -> bool:
@@ -86,7 +93,8 @@ class CodebaseTools:
     def semantic_search(self, query: str, limit: int = 5) -> dict:
         self._ensure()
         limit = max(1, min(int(limit or 5), 50))
-        pool = max(limit * 6, 30)
+        # a typed identifier needs room for its whole scope (every chunk of WD0096*.cs), plain prose does not
+        pool = max(limit * 6, 100 if self._whole_identifiers(query) else 30)
         extra = self.expander.expand(query)
         terms = _query_terms(query)
         for t in _query_terms(" ".join(extra)):
@@ -139,6 +147,7 @@ class CodebaseTools:
                 for r in self.conn.execute(
                     "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ? LIMIT 300", (like,)):
                     scores[r[0]] += 2
+                    exact_ids.add(r[0])  # in a file named after it (WD0096Service.cs: SetRecord)
             ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:pool]
             ranked["symbol"] = [rid for rid, _ in ordered]
             # equal match counts must share a rank, otherwise arbitrary row order decides
@@ -169,7 +178,17 @@ class CodebaseTools:
                 via[rid].append(name)
         top_ids = [rid for rid, _ in sorted(fused.items(), key=lambda kv: -kv[1])]
         if exact_ids:  # a typed identifier beats sub-word noise (every *Lot class), ties keep the fused order
-            top_ids = [r for r in top_ids if r in exact_ids] + [r for r in top_ids if r not in exact_ids]
+            exact = [r for r in top_ids if r in exact_ids]
+            # within its scope, names that also match the rest of the query come first ("WD0096 存檔" -> SetRecord)
+            idents = {p for i in self._whole_identifiers(query) for p in _query_terms(i)}
+            rest = [t for t in terms if t not in idents]
+            if rest and exact:
+                names = dict(self.conn.execute(
+                    f"SELECT c.rowid, s.symbol_name FROM chunk_metadata c JOIN symbols s ON s.id = c.symbol_id "
+                    f"WHERE c.rowid IN ({','.join('?' * len(exact))})", exact).fetchall())
+                hits = {r: sum(_has_word(t, names.get(r) or "") for t in rest) for r in exact}
+                exact.sort(key=lambda r: -hits[r])  # stable: fused order within equal hits
+            top_ids = exact + [r for r in top_ids if r not in exact_ids]
 
         results, seen_spans = [], set()
         routed, bare = self._route_data_access(query)
@@ -184,6 +203,8 @@ class CodebaseTools:
             first = self._ordinary_hit(top_ids[0], fused, via)
             if first is not None:
                 span = (first["file_path"], first["start_line"], first["end_line"])
+                same = [h for h in routed_hits if (h["file_path"], h["start_line"], h["end_line"]) == span]
+                first = same[0] if same else first  # keep the copy that carries the data access
                 routed_hits = [h for h in routed_hits if (h["file_path"], h["start_line"], h["end_line"]) != span]
                 results.append(first)
                 seen_spans.add(span)
@@ -332,10 +353,18 @@ class CodebaseTools:
         if relation_direction not in ("upstream", "downstream", "both"):
             raise ValueError("relation_direction must be 'upstream', 'downstream' or 'both'")
         conn = self.conn
-        defs = conn.execute(
-            "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' ORDER BY file_path, start_line LIMIT 8",
-            (symbol_name,),
-        ).fetchall()
+        # "Type.Method" or a full qualified name narrows overloaded names such as InsertAsync to one class
+        if "." in symbol_name:
+            defs = conn.execute(
+                "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' "
+                "AND (qualified_name=? OR qualified_name LIKE ?) ORDER BY file_path, start_line LIMIT 8",
+                (symbol_name.rsplit(".", 1)[1], symbol_name, "%." + symbol_name),
+            ).fetchall()
+        else:
+            defs = conn.execute(
+                "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' ORDER BY file_path, start_line LIMIT 8",
+                (symbol_name,),
+            ).fetchall()
         if not defs:
             like = conn.execute(
                 "SELECT DISTINCT symbol_name FROM symbols WHERE symbol_name LIKE ? LIMIT 10", (f"%{symbol_name}%",)
@@ -489,8 +518,9 @@ class CodebaseTools:
     # ------------------------------------------------------------------ Tool 3
     def optimized_context(self, file_path: str, focus_lines: list[int], padding_lines: int = 15) -> dict:
         abs_path = os.path.abspath(os.path.join(self.root, file_path))
-        if os.path.commonpath([abs_path, self.root]) != self.root:
-            raise ValueError("file_path must stay inside the project root")
+        allowed = [self.root, *extra_roots(self.root)]
+        if not any(_inside(abs_path, r) for r in allowed):
+            raise ValueError("file_path must stay inside the project root or an extra root")
         if not os.path.isfile(abs_path):
             raise FileNotFoundError(file_path)
         if not focus_lines:
@@ -743,6 +773,13 @@ def render_data_access(res: dict) -> str:
             out.extend(_da_line(e) for e in items[:40])
             if len(items) > 40:
                 out.append(f"    ... {len(items) - 40} more")
+    if res.get("programs"):
+        out.append(f'  USED BY PROGRAMS ({len(res["programs"])})')
+        for p in res["programs"][:60]:
+            out.append(f'    [{p["confidence"]}] {p["program"]}  {"/".join(p["access"])}  {p["file_path"]}  '
+                       f'({", ".join(p["actions"][:6])}{", ..." if len(p["actions"]) > 6 else ""})')
+            if p.get("pages"):
+                out.append(f'        pages: {", ".join(p["pages"][:5])}{" ..." if len(p["pages"]) > 5 else ""}')
     t = res.get("touches")
     if t:
         for title, key in (("WRITES", "writes"), ("READS", "reads"), ("EXECUTES", "executes")):
@@ -756,7 +793,7 @@ def render_data_access(res: dict) -> str:
             for e in t["dynamic_sql"][:10]:
                 out.append(f'    {e["file_path"]}:{e["line"]}  {e["evidence"][:100]}')
     if res["possible"]:
-        out.append(f'  POSSIBLE (uncertain, dynamic SQL) ({len(res["possible"])})')
+        out.append(f'  POSSIBLE (uncertain: dynamic SQL, EF SaveChanges on tracked entities) ({len(res["possible"])})')
         out.extend(_da_line(e) for e in res["possible"][:20])
     if not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
         out.append("  no recorded access")
@@ -797,7 +834,7 @@ def render_status(st: dict) -> str:
     if st.get("index_format_outdated"):
         out.append("index was built by an older version and will be rebuilt on the next update")
     if st["state"] in ("stale", "not_indexed"):
-        out.append("hint: run `bin/indexer index` (search/relations/context also refresh automatically)")
+        out.append("hint: run `local-codebase-indexer index` (search/relations/context also refresh automatically)")
     return "\n".join(out)
 
 

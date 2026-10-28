@@ -31,9 +31,17 @@ LANGUAGE_BY_EXT = {
 }
 
 
+# vendored / generated files that are committed, so .gitignore does not exclude them
+DEFAULT_IGNORE = ["*.min.js", "*.min.css", "*-min.js"]
+# project-specific extra excludes (gitignore syntax), e.g. third-party scripts checked into the repo
+PROJECT_IGNORE_FILE = os.path.join(".ai_context", "ignore")
+# folders outside the project to index too (one per line, relative to the root or absolute), e.g. exported SQL
+EXTRA_ROOTS_FILE = os.path.join(".ai_context", "extra_roots")
+
+
 @dataclass
 class ScannedFile:
-    rel_path: str  # posix style, relative to root
+    rel_path: str  # posix style, relative to root; absolute for files under an extra root
     abs_path: str
     mtime_ns: int
     size: int
@@ -54,9 +62,38 @@ def _ignored(path: str, is_dir: bool, specs: list) -> bool:
     return False
 
 
+def _read_lines(path: str) -> list[str]:
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            return f.read().splitlines()
+    except OSError:
+        return []
+
+
+def extra_roots(root: str) -> list[str]:
+    """Existing folders listed in ``.ai_context/extra_roots`` (blank lines and ``#`` comments skipped)."""
+    root = os.path.abspath(root)
+    out = []
+    for line in _read_lines(os.path.join(root, EXTRA_ROOTS_FILE)):
+        line = line.strip()
+        if line and not line.startswith("#"):
+            p = os.path.abspath(os.path.join(root, line))
+            if os.path.isdir(p) and p not in out:
+                out.append(p)
+    return out
+
+
 def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES) -> Iterator[ScannedFile]:
     root = os.path.abspath(root)
-    stack: list[tuple[str, list]] = [(root, [])]
+    spec = pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE + _read_lines(os.path.join(root, PROJECT_IGNORE_FILE)))
+    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes)
+    for extra in extra_roots(root):
+        yield from _walk(extra, [(extra, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE))],
+                         lambda p: p.replace(os.sep, "/"), max_bytes)
+
+
+def _walk(top: str, specs: list, rel, max_bytes: int) -> Iterator[ScannedFile]:
+    stack: list[tuple[str, list]] = [(top, specs)]
     while stack:
         directory, specs = stack.pop()
         gi = os.path.join(directory, ".gitignore")
@@ -92,7 +129,7 @@ def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES) -> Iterator[ScannedFi
                 if st.st_size > max_bytes:
                     continue
                 yield ScannedFile(
-                    rel_path=os.path.relpath(e.path, root).replace(os.sep, "/"),
+                    rel_path=rel(e.path),
                     abs_path=e.path,
                     mtime_ns=st.st_mtime_ns,
                     size=st.st_size,
