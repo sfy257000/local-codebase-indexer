@@ -18,7 +18,8 @@ Check: `local-codebase-indexer --help`. No API keys or network access are needed
 local-codebase-indexer --root <project> index                      # build / refresh the index
 local-codebase-indexer --root <project> search "natural language or identifier" --limit 5
 local-codebase-indexer --root <project> relations <SymbolName> --direction both
-local-codebase-indexer --root <project> data-access <TableOrProcedure>   # who reads / writes / executes it
+local-codebase-indexer --root <project> data-access <TableOrProcedure>   # who reads / writes / executes it, which programs and pages reach it
+local-codebase-indexer --root <project> impact [base]               # what a diff touches: symbols, tables, programs, pages
 local-codebase-indexer --root <project> context <file> --lines 120 --padding 15
 local-codebase-indexer --root <project> status                     # is the index fresh?
 ```
@@ -31,7 +32,7 @@ Put `--json` before the subcommand for JSON output. The index lives in `<project
 claude mcp add local-indexer -- local-codebase-indexer --root <project> serve
 ```
 
-Tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_index_status`.
+Tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_impact_analysis`, `codebase_index_status`.
 
 ## Reading the results
 

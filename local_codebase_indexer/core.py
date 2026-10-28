@@ -9,6 +9,7 @@ import re
 import sqlite3
 import subprocess
 import time
+from contextlib import contextmanager
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -19,6 +20,24 @@ from .langparse import CLASS_LIKE, parse_file
 from .scanner import iter_files
 
 _TYPE_KINDS = tuple(CLASS_LIKE)
+
+
+COMMIT_EVERY = 500  # files per commit; each file is still atomic through a savepoint
+
+
+@contextmanager
+def _file_transaction(conn: sqlite3.Connection):
+    """One file's rows go in or out together, inside the batch transaction that ``update`` commits."""
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    conn.execute("SAVEPOINT index_file")
+    try:
+        yield
+    except BaseException:
+        conn.execute("ROLLBACK TO index_file")
+        conn.execute("RELEASE index_file")
+        raise
+    conn.execute("RELEASE index_file")
 
 
 def decode_bytes(data: bytes) -> str:
@@ -57,14 +76,20 @@ def embedding_text_for(header: str, body: str) -> str:
     return (header + "\n" + body)[:2500]
 
 
+def git(root: str, *args: str, timeout: int = 15) -> str | None:
+    """stdout of a git command run in ``root`` (UTF-8), None when git fails or is missing."""
+    try:
+        r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
 def git_info(root: str) -> dict | None:
     """HEAD commit, branch and number of uncommitted paths; None outside a git work tree."""
     def run(*args: str) -> str | None:
-        try:
-            r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return r.stdout if r.returncode == 0 else None
+        return git(root, *args)
 
     head = run("rev-parse", "HEAD")
     if head is None:
@@ -162,6 +187,8 @@ class Indexer:
                 stats.updated += 1
             else:
                 stats.added += 1
+            if (stats.added + stats.updated) % COMMIT_EVERY == 0:
+                conn.commit()
 
         for gone in set(existing) - seen:
             self._remove_file(gone)
@@ -177,6 +204,7 @@ class Indexer:
             resolve_calls(conn)
             resolve_page_actions(conn)
             resolve_ef_access(conn)
+            mine_terms(conn)
         self._record_run_meta()
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
@@ -224,7 +252,7 @@ class Indexer:
             [embedding_text_for(ch.header, ch.text) for ch in parsed.chunks]
         )
         c = self.conn
-        with c:
+        with _file_transaction(c):
             self._remove_file(rel_path)
             c.execute(
                 "INSERT INTO files(file_path, last_modified, md5_hash, language) VALUES(?,?,?,?)",
@@ -312,7 +340,104 @@ def resolve_page_actions(conn: sqlite3.Connection) -> None:
                      rows)
 
 
+# identifier words too generic to stand for a Chinese term
+_MINE_STOP = {
+    "get", "set", "async", "by", "to", "of", "and", "or", "list", "data", "info", "model", "the", "is", "in", "on",
+    "for", "new", "all", "with", "from", "check", "do", "process", "result", "value", "item", "items", "id", "no",
+    "nbr", "dto", "view", "service", "repository", "controller", "query", "condition", "rec", "record", "records",
+}
+
+
+def mine_terms(conn: sqlite3.Connection) -> None:
+    """Pair Chinese bigrams of the comments right above a symbol with the sub-words of its name, e.g.
+    ``/// 收帳`` above ``ReceiveLotAsync`` -> 收帳 = receive. Kept: seen with >= 5 symbols, >= 15% of the
+    symbols commented with the bigram carry the word (smoothed by 10, so a handful of comments on one class
+    cannot map a generic word like 維護), and the word is >= 15x likelier there than overall."""
+    conn.execute("DELETE FROM mined_terms")
+    pairs: dict[tuple[str, str], int] = defaultdict(int)
+    gram_n: dict[str, int] = defaultdict(int)
+    word_n: dict[str, int] = defaultdict(int)
+    total = 0
+    for name, sym_start, chunk_start, text in conn.execute(
+            "SELECT s.symbol_name, s.start_line, c.start_line, c.raw_text FROM chunk_metadata c "
+            "JOIN symbols s ON s.id = c.symbol_id WHERE s.symbol_type IN "
+            "('method', 'class', 'interface', 'property', 'function', 'constructor')"):
+        words = {w for w in split_identifier(name) if len(w) >= 3 and not w.isdigit() and w not in _MINE_STOP}
+        total += 1
+        for w in words:
+            word_n[w] += 1
+        head = text.split("\n")[:max(0, sym_start - chunk_start)]
+        grams = {run[i:i + 2] for line in head for run in _CJK_RUN.findall(line) for i in range(len(run) - 1)}
+        for g in grams:
+            gram_n[g] += 1
+            for w in words:
+                pairs[(g, w)] += 1
+    best: dict[str, list[tuple[float, str, int]]] = defaultdict(list)
+    for (g, w), n in pairs.items():
+        share = n / (gram_n[g] + 10)
+        if n >= 5 and share >= 0.15 and share / (word_n[w] / total) >= 15:
+            best[g].append((share, w, n))
+    conn.executemany("INSERT INTO mined_terms(gram, word, n) VALUES(?,?,?)",
+                     [(g, w, n) for g, lst in best.items() for _s, w, n in sorted(lst, reverse=True)[:3]])
+
+
 _DBSET = re.compile(r"\bI?DbSet<\s*([\w.]+)\s*>")
+
+
+def _subclasses(conn: sqlite3.Connection):
+    """name -> that class and every class deriving from it (by base-list name)."""
+    children: dict[str, set[str]] = defaultdict(set)
+    for owner, base in conn.execute("SELECT o.symbol_name, r.name FROM raw_refs r JOIN symbols o ON o.id = r.owner "
+                                    "WHERE r.kind = 'base'"):
+        children[base.split(".")[-1].split("<")[0]].add(owner)
+    cache: dict[str, set[str]] = {}
+
+    def of(name: str) -> set[str]:
+        if name not in cache:
+            out, todo = {name}, [name]
+            while todo:
+                for c in children.get(todo.pop(), ()):
+                    if c not in out:
+                        out.add(c)
+                        todo.append(c)
+            cache[name] = out
+        return cache[name]
+    return of
+
+
+class _ContextTypes:
+    """Declared type of the context variable in ``ctx.Set.Where(..)``: ``this`` is the enclosing class, a local is
+    read from the method text (``var ctx = new X(..)`` / ``X ctx``), anything else from the class's field or
+    property declaration."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+        self._sym: dict[str, sqlite3.Row | None] = {}
+        self._text: dict[str, str] = {}
+
+    def __call__(self, source_id: str | None, var: str) -> str:
+        if not source_id or not var:
+            return ""
+        if source_id not in self._sym:
+            self._sym[source_id] = self.conn.execute(
+                "SELECT qualified_name FROM symbols WHERE id=?", (source_id,)).fetchone()
+        sym = self._sym[source_id]
+        if sym is None or not sym["qualified_name"] or "." not in sym["qualified_name"]:
+            return ""
+        cls = sym["qualified_name"].rsplit(".", 1)[0]
+        if var == "this":
+            return cls.rsplit(".", 1)[-1]
+        if source_id not in self._text:
+            self._text[source_id] = "\n".join(r[0] for r in self.conn.execute(
+                "SELECT raw_text FROM chunk_metadata WHERE symbol_id=? ORDER BY start_line", (source_id,)))
+        v = re.escape(var)
+        m = (re.search(rf"\b{v}\s*=\s*new\s+([\w.]+)\s*\(", self._text[source_id])
+             or re.search(rf"\b(?!var\b)([\w.]+)\s+{v}\s*[=;,)]", self._text[source_id]))
+        if m:
+            return m.group(1).split(".")[-1]
+        row = self.conn.execute("SELECT type_name FROM symbols WHERE qualified_name=? AND symbol_type IN "
+                                "('field', 'property')", (f"{cls}.{var}",)).fetchone()
+        return (row["type_name"] or "") if row else ""
 
 
 def resolve_ef_access(conn: sqlite3.Connection) -> None:
@@ -322,22 +447,33 @@ def resolve_ef_access(conn: sqlite3.Connection) -> None:
     entities: that becomes an ``uncertain`` write (listed as possible, never as a confirmed writer)."""
     conn.execute("DELETE FROM data_access WHERE via='ef_linq'")
     dbsets: dict[str, str] = {}
-    for r in conn.execute("SELECT symbol_name, signature FROM symbols WHERE symbol_type='property' AND signature LIKE '%DbSet<%'"):
-        m = _DBSET.search(r[1] or "")
+    contexts: dict[str, set[str]] = defaultdict(set)  # DbSet member -> context classes declaring it
+    for name, sig, owner in conn.execute(
+            "SELECT s.symbol_name, s.signature, p.symbol_name FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id "
+            "WHERE s.symbol_type='property' AND s.signature LIKE '%DbSet<%'"):
+        m = _DBSET.search(sig or "")
         if m:
-            dbsets[r[0].lower()] = m.group(1).split(".")[-1]
+            dbsets[name.lower()] = m.group(1).split(".")[-1]
+            if owner:
+                contexts[name.lower()].add(owner)
     if not dbsets:
         return
+    subclasses = _subclasses(conn)
     mapped = {r[0].split(".")[-1]: r[1] for r in conn.execute(
         "SELECT detail, target_name FROM data_access WHERE via='ef_mapping' AND detail != ''")}
+    ctx_type = _ContextTypes(conn)
     rows = []
     for r in conn.execute("SELECT * FROM data_access WHERE via='ef_raw'").fetchall():
-        entity = dbsets.get(r["target_key"][3:])
+        member = r["target_key"][3:]
+        entity = dbsets.get(member)
         if entity is None:
             continue
         table = mapped.get(entity, r["target_name"])
+        owners = {c for o in contexts[member] for c in subclasses(o)}
+        # confirmed when the context variable is typed as a class that declares (or inherits) this DbSet
+        conf = "confirmed" if ctx_type(r["source_id"], r["qualifier"]) in owners else "probable"
         rows.append((r["file_path"], r["source_id"], r["line"], table.lower(), table, "", "table", r["access"],
-                     r["op"], "ef_linq", "probable", r["evidence"], entity))
+                     r["op"], "ef_linq", conf, r["evidence"], entity))
     savers = {r[0]: (r[1], r[2]) for r in conn.execute(
         "SELECT source_id, line, evidence FROM data_access WHERE via='ef_raw' AND target_key='ef:#savechanges' "
         "AND source_id IS NOT NULL")}
@@ -389,7 +525,7 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
                 targets.add(t)
         elif name in ns_files:
             targets |= {t for t in ns_files[name] if file_types[t] & used[src]}
-        else:
+        elif src.endswith(".py"):
             slug = name.replace(".", "/")
             for cand in (slug + ".py", slug + "/__init__.py"):
                 targets |= {f for f in files if f == cand or f.endswith("/" + cand)}

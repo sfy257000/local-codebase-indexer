@@ -22,7 +22,8 @@ local-codebase-indexer --root <项目路径> index                      # 建立
 local-codebase-indexer search "database mapping for LotNo" --limit 5
 local-codebase-indexer relations IExistOpenHandleService --direction both   # upstream | downstream | both
 local-codebase-indexer context Services/LotService.cs --lines 120 --padding 15   # 别名：slice
-local-codebase-indexer data-access MES_Lot                           # 谁读 / 写 / 执行某数据表或存储过程；存储过程碰了哪些数据
+local-codebase-indexer data-access MES_Lot                           # 谁读 / 写 / 执行某数据表或存储过程；存储过程碰了哪些数据（--full 列出全部）
+local-codebase-indexer impact main...HEAD                            # 一次变更动到的符号、数据表、程序与页面（不给参数＝未提交的变更）
 local-codebase-indexer stats
 local-codebase-indexer status                                       # 索引是否新鲜、失败文件、git commit、一致性检查
 ```
@@ -39,7 +40,7 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 # 不安装直接运行：claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
-`serve` 通过 stdio 提供 JSON-RPC（MCP），暴露五个工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_index_status`。
+`serve` 通过 stdio 提供 JSON-RPC（MCP），暴露六个工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`。常驻的 server 在距离上次检查超过 15 秒时，查询前会重新检查索引（几千个文件无变动约 1 秒）。`codebase_get_data_access` 默认返回摘要（每区 5 条、程序全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附依赖文件。
 
 ## 三层索引
 
@@ -60,7 +61,7 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 
 ## 数据访问（SQL）
 
-`data-access <数据表或存储过程>` 回答“谁写入 / 读取 / 执行 X”。数据来源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含别名解析，排除 CTE、临时表、系统对象）、C# 的 SQL 字符串（字面值、`+`、字符串插值、`string.Format`、常量、局部变量、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）经 Dapper、`SqlCommand` 或 EF `FromSql` 发出、配合 `CommandType.StoredProcedure` 的存储过程名称、对 `DbSet<T>` 成员的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比对成员名称，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 映射。调用某存储过程的代码视为该过程所写数据表的间接写入者（最多追 4 层）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 调用往上追到 `*Controller` 方法（最多 8 层），（实现方法也会接到它所实现接口方法的调用者，涵盖 `foreach (var step in steps) step.Run()` 这种管线），按 controller 文件分组，并列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向这些 action 的 Razor 页面（`.cshtml`），查一张表就知道哪些画面会动到它。方法读了某 DbSet 又调用 `SaveChanges`、但没有明确 `Add` / `Remove` 时，可能是在更新跟踪中的实体，列为可能（`uncertain`）写入者。每条都有置信等级；**动态 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值组成的 SQL）无法解析，会单独列为 `uncertain`**，不会混进确定的清单。已知缺口：`FROM a JOIN b ON ..., c` 会漏掉 `c`；把存储过程名称传给非数据库方法时看不到。
+`data-access <数据表或存储过程>` 回答“谁写入 / 读取 / 执行 X”。数据来源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含别名解析，排除 CTE、临时表、系统对象）、C# 的 SQL 字符串（字面值、`+`、字符串插值、`string.Format`、常量、局部变量、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）经 Dapper、`SqlCommand` 或 EF `FromSql` 发出、配合 `CommandType.StoredProcedure` 的存储过程名称、对 `DbSet<T>` 成员的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比对成员名称，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 映射。调用某存储过程的代码视为该过程所写数据表的间接写入者（最多追 4 层）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 调用往上追到 `*Controller` 方法（最多 8 层），（实现方法也会接到它所实现接口方法的调用者，涵盖 `foreach (var step in steps) step.Run()` 这种管线），按 controller 文件分组，并列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向这些 action 的 Razor 页面（`.cshtml`），查一张表就知道哪些画面会动到它。方法读了某 DbSet 又调用 `SaveChanges`、但没有明确 `Add` / `Remove` 时，可能是在更新跟踪中的实体，列为可能（`uncertain`）写入者。每条都有置信等级；**动态 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值组成的 SQL）无法解析，会单独列为 `uncertain`**，不会混进确定的清单。EF 访问在 context 变量（`using (var db = new X())`、字段或属性、`this`）的类型是声明或继承该 DbSet 的类时为 `confirmed`，否则 `probable`。往上追时没有任何 confirmed / probable 调用者的方法列在 NO KNOWN CALLER：可能是 API、计划任务、`Main` 等入口，或是调用图解不出的调用。已知缺口：`FROM a JOIN b ON ..., c` 会漏掉 `c`；把存储过程名称传给非数据库方法时看不到。
 
 只存在数据库里的存储过程，可导出到仓库外的文件夹，再写进 `.ai_context/extra_roots`（一行一个文件夹，绝对路径或相对于项目根目录）；这些文件以绝对路径索引。
 
@@ -70,9 +71,13 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 
 查询会用小型同义词字典扩展（`SP` / `预存程序` / `stored procedure` / `usp`、数据表、批号、报废等；见 `local_codebase_indexer/synonyms.py`）。可在 `.ai_context/synonyms.json` 为项目新增或停用分组：`{"groups": [["wpnlot", "在制批"]], "disable": ["sp"]}`。这对缩写与中英对照有帮助，对自由改写的同义说法没用。
 
+索引也会自动挖项目自己的词典：符号正上方注释里的中文双字词，配对符号名称的英文子词（`ReceiveLotAsync` 上面写 `/// 收帳` → 收帳 = receive）。至少 5 个符号支持、在带有该词注释的符号中占 15% 以上（有平滑）、且该英文词在那里出现的概率是整体的 15 倍以上才保留。在 3 万 chunk 的 C# 项目上约得到 350 组（收帳→receive、拆批→divide、油墨→ink、底片→film），换个说法的查询 MRR 由 0.57 提升到 0.64。
+
 ## 索引健康状态
 
-`status`（也是 MCP 工具 `codebase_index_status`）不更新索引，只报告索引是否可信：`fresh`（新鲜）、`stale`（文件有变更或 git HEAD 已移动）、`degraded`（有解析失败的文件或数据库不一致）、`not_indexed`（尚未建立）。解析失败的文件会从索引移除、连同错误原因列出，并在每次更新时重试，所以搜索不会返回它的过期内容。`index --force` 可全部重建。
+`status`（也是 MCP 工具 `codebase_index_status`）不更新索引，只报告索引是否可信：`fresh`（新鲜）、`stale`（文件有变更或 git HEAD 已移动）、`degraded`（有解析失败的文件或数据库不一致）、`not_indexed`（尚未建立）。解析失败的文件会从索引移除、连同错误原因列出，并在每次更新时重试，所以搜索不会返回它的过期内容。`index --force` 可全部重建。status 也会显示运行中的版本；包的代码在进程启动后有改动时会提示重启 MCP server（也就是开新的 Claude Code session）。
+
+速度（2.3k 文件、3 万 chunk、hashing 嵌入）：空数据库全量约 36 秒，切分支改写 400 个文件约 10 秒，无变动检查约 1 秒。每个文件在 savepoint 内写入（不可分割），每 500 个文件 commit 一次。
 
 ## 基准测试
 

@@ -131,6 +131,14 @@ CREATE TABLE IF NOT EXISTS calls (
 CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee_id);
 CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller_id);
 
+-- Chinese comment bigram -> identifier sub-word pairs mined from doc comments above symbols (query expansion).
+CREATE TABLE IF NOT EXISTS mined_terms (
+    gram TEXT NOT NULL,
+    word TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (gram, word)
+);
+
 -- Files that could not be indexed on the last attempt. They are retried on every update.
 CREATE TABLE IF NOT EXISTS index_failures (
     file_path TEXT PRIMARY KEY,
@@ -140,7 +148,7 @@ CREATE TABLE IF NOT EXISTS index_failures (
 """
 
 # Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
-INDEX_VERSION = "7"
+INDEX_VERSION = "8"
 
 
 def index_dir(root: str) -> str:
@@ -190,5 +198,5 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 def clear_all(conn: sqlite3.Connection) -> None:
     for t in ("files", "symbols", "dependencies", "raw_refs", "chunk_metadata", "vss_chunks", "chunks_fts",
-              "index_failures", "data_access", "call_sites", "calls"):
+              "index_failures", "data_access", "call_sites", "calls", "mined_terms"):
         conn.execute(f"DELETE FROM {t}")

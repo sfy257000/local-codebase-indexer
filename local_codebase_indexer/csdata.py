@@ -466,8 +466,10 @@ class _Extractor:
                 "identifier", "this_expression", "member_access_expression"):
             return
         write = _EF_WRITE.get(method)
+        # qualifier = the context variable (IMES in IMES.Lots.Where), "this" inside the context itself
+        last = ctx.child_by_field_name("name") if ctx.type == "member_access_expression" else ctx
         self.out.append(Access(
-            key="ef:" + self.text(name).lower(), name=self.text(name), qualifier="", kind="entity_set",
+            key="ef:" + self.text(name).lower(), name=self.text(name), qualifier=self.text(last), kind="entity_set",
             access="write" if write else "read", op=write or "select", line=self.line(n), via="ef_raw",
             confidence="probable", evidence=self.collapsed(n), detail=method,
         ))

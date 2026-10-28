@@ -6,19 +6,22 @@ import os
 import re
 import sqlite3
 import textwrap
+import time
 from collections import defaultdict
 
 import numpy as np
 
-from . import dataflow
+from . import __version__, dataflow
 from . import db as dbmod
 from .callgraph import CONF_ORDER
-from .core import Indexer, cjk_bigrams, git_info
+from .core import Indexer, cjk_bigrams, git, git_info
 from .scanner import extra_roots, iter_files
 from .embedder import split_identifier
 from .synonyms import Expander
 
 RRF_K = 60
+RECHECK_SECONDS = 15  # a long-lived server re-checks the index at most this often
+_STARTED = time.time()  # when this process loaded the package
 # the symbol-name layer is a weak signal (substring match), so it counts for less
 LAYER_WEIGHTS = {"keyword": 1.0, "vector": 1.0, "symbol": 0.5}
 MAX_CONTEXT_CHARS = 24000
@@ -45,6 +48,17 @@ def _query_terms(query: str) -> list[str]:
         if t not in _STOPWORDS and t not in out and len(t) > 1:
             out.append(t)
     return out
+
+
+def _server_info() -> dict:
+    """Version of the running code and whether its source changed on disk after it was loaded (a long-lived MCP
+    server keeps running the old code until it is restarted)."""
+    pkg = os.path.dirname(os.path.abspath(__file__))
+    try:
+        changed = any(os.path.getmtime(os.path.join(pkg, f)) > _STARTED for f in os.listdir(pkg) if f.endswith(".py"))
+    except OSError:
+        changed = False
+    return {"version": __version__, "code_changed_since_start": changed}
 
 
 def _inside(path: str, base: str) -> bool:
@@ -78,24 +92,28 @@ class CodebaseTools:
         self.embedder = self.indexer.embedder
         self.auto_refresh = auto_refresh
         self.expander = Expander(self.root)
-        self._fresh = False
+        self._checked_at: float | None = None
 
     def refresh(self, force: bool = False):
         stats = self.indexer.update(force=force)
-        self._fresh = True
+        self._checked_at = time.monotonic()
         return stats
 
     def _ensure(self) -> None:
-        if self.auto_refresh and not self._fresh:
+        """Incremental refresh before a query; a long-lived MCP server re-checks once the last check is older than
+        ``RECHECK_SECONDS`` (a no-op check costs about a second on a few thousand files)."""
+        if self.auto_refresh and (self._checked_at is None
+                                  or time.monotonic() - self._checked_at > RECHECK_SECONDS):
             self.refresh()
 
     # ------------------------------------------------------------------ Tool 1
-    def semantic_search(self, query: str, limit: int = 5) -> dict:
+    def semantic_search(self, query: str, limit: int = 5, related: bool = False) -> dict:
         self._ensure()
         limit = max(1, min(int(limit or 5), 50))
         # a typed identifier needs room for its whole scope (every chunk of WD0096*.cs), plain prose does not
         pool = max(limit * 6, 100 if self._whole_identifiers(query) else 30)
         extra = self.expander.expand(query)
+        extra += [w for w in self._mined_expansion(query) if w not in extra]
         terms = _query_terms(query)
         for t in _query_terms(" ".join(extra)):
             if t not in terms:
@@ -239,9 +257,19 @@ class CodebaseTools:
             if len(results) >= limit:
                 break
 
-        return {"query": query, "results": results, "related_files": self._related_files(results[:3])}
+        return {"query": query, "results": results,
+                "related_files": self._related_files(results[:3]) if related else []}
 
     # ------------------------------------------------------------------ data access routing
+    def _mined_expansion(self, query: str) -> list[str]:
+        """Identifier words that this codebase's comments pair with the query's Chinese bigrams (core.mine_terms)."""
+        grams = sorted({run[i:i + 2] for run in re.findall(r"[一-鿿]+", query) for i in range(len(run) - 1)})
+        if not grams:
+            return []
+        rows = self.conn.execute(
+            f"SELECT word FROM mined_terms WHERE gram IN ({','.join('?' * len(grams))}) ORDER BY n DESC", grams)
+        return list(dict.fromkeys(r[0] for r in rows))
+
     def _ordinary_hit(self, rid: int, fused: dict, via: dict) -> dict | None:
         row = self.conn.execute(
             "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, s.symbol_type, s.qualified_name, s.signature "
@@ -570,6 +598,66 @@ class CodebaseTools:
             "context": "\n   ...\n".join(parts),
         }
 
+    # ------------------------------------------------------------------ impact of a change
+    def impact(self, base: str | None = None) -> dict:
+        """What a change touches: the symbols on changed lines, the tables they access themselves, and the
+        programs / pages / caller-less entry points that reach them. ``base`` is any git revision or range
+        (``main``, ``HEAD~3``, ``origin/main...HEAD``); without it, uncommitted work (staged, unstaged and
+        untracked files) against HEAD."""
+        if base is not None and (not base.strip() or base.startswith("-")):
+            raise ValueError("base must be a git revision or range")
+        if self.auto_refresh:
+            self.refresh()  # line numbers must match the files on disk, so no recheck throttle here
+        diff = git(self.root, "diff", "--unified=0", "--no-color", "--no-ext-diff", "--relative",
+                   base or "HEAD", timeout=60)
+        if diff is None:
+            raise ValueError(f"git diff failed for {base or 'HEAD'} (not a git repository, or unknown revision)")
+        ranges: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        current = None
+        for line in diff.splitlines():
+            if line.startswith("+++ "):
+                current = line[6:] if line.startswith("+++ b/") else None  # None: deleted file
+            elif line.startswith("@@") and current:
+                m = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
+                if m:
+                    start, count = int(m.group(1)), int(m.group(2) or 1)
+                    ranges[current].append((start, start + max(count, 1) - 1))
+        if base is None:
+            for p in (git(self.root, "ls-files", "--others", "--exclude-standard") or "").splitlines():
+                ranges[p].append((1, 10 ** 9))
+        changed: dict[str, dict] = {}
+        unmapped = []
+        for path, spans in sorted(ranges.items()):
+            hit = False
+            for a, b in spans:
+                rows = self.conn.execute(
+                    "SELECT id, symbol_type, qualified_name, symbol_name, file_path, start_line, end_line FROM symbols "
+                    "WHERE file_path=? AND start_line<=? AND end_line>=? AND symbol_type NOT IN ('namespace') "
+                    "ORDER BY (end_line - start_line)", (path, b, a)).fetchall()
+                leaves = [r for r in rows if r["symbol_type"] not in _TYPE_KINDS] or rows[:1]
+                for r in leaves if b - a >= 10 ** 8 else leaves[:1]:
+                    hit = True
+                    c = changed.setdefault(r["id"], {"id": r["id"], "symbol": r["qualified_name"] or r["symbol_name"],
+                                                     "type": r["symbol_type"], "file_path": r["file_path"],
+                                                     "lines": []})
+                    c["lines"].append([max(a, r["start_line"]), min(b, r["end_line"])])
+            if not hit:
+                unmapped.append(path)
+        ids = list(changed)
+        own = []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            own += [{"source": changed[r["source_id"]]["symbol"], "target": r["target_name"], "access": r["access"],
+                     "op": r["op"], "confidence": r["confidence"], "file_path": r["file_path"], "line": r["line"]}
+                    for r in self.conn.execute(
+                        f"SELECT * FROM data_access WHERE source_id IN ({','.join('?' * len(chunk))}) "
+                        f"AND via != 'ef_raw' ORDER BY target_name, line", chunk)]
+        entries = [{"source_id": c["id"], "source_type": "method" if c["type"] in self._METHOD_KINDS else c["type"],
+                    "access": "change", "confidence": "confirmed"} for c in changed.values()]
+        programs, no_caller = dataflow._programs(self.conn, dataflow._Lookup(self.conn), entries)
+        return {"base": base or "HEAD (uncommitted)", "changed": list(changed.values()), "unmapped_files": unmapped,
+                "tables": own, "programs": programs, "no_known_caller": no_caller}
+
     # ------------------------------------------------------------------ Tool 4
     def index_status(self) -> dict:
         """Report how trustworthy the index is. Never refreshes the index itself."""
@@ -609,6 +697,7 @@ class CodebaseTools:
 
         return {
             "state": state,
+            "server": _server_info(),
             "root": self.root,
             "embedder": meta("embedder"),
             "index_version": meta("index_version"),
@@ -755,7 +844,12 @@ def _da_line(e: dict) -> str:
             f'{e["op"]} ({e["via"]}){chain}')
 
 
-def render_data_access(res: dict) -> str:
+def _more(n: int, shown: int, full: bool) -> str:
+    return f"    ... {n - shown} more" + ("" if full else " (detail=true / --full lists all)")
+
+
+def render_data_access(res: dict, full: bool = False) -> str:
+    """Summary by default (5 entries per section, every program); ``full`` lists up to 40 per section."""
     if not res["found"]:
         msg = f'No table or procedure named "{res["object"]}" found.'
         if res.get("suggestions"):
@@ -766,13 +860,14 @@ def render_data_access(res: dict) -> str:
         out.append(f'  defined in {d["file_path"]}:{d["line"]}')
     sections = [("WRITTEN BY", "writers"), ("READ BY", "readers"), ("EXECUTED BY", "executed_by"),
                 ("MAPPED BY (EF)", "mapped_by")]
+    cap = 40 if full else 5
     for title, key in sections:
         items = res[key]
         if items:
             out.append(f"  {title} ({len(items)})")
-            out.extend(_da_line(e) for e in items[:40])
-            if len(items) > 40:
-                out.append(f"    ... {len(items) - 40} more")
+            out.extend(_da_line(e) for e in items[:cap])
+            if len(items) > cap:
+                out.append(_more(len(items), cap, full))
     if res.get("programs"):
         out.append(f'  USED BY PROGRAMS ({len(res["programs"])})')
         for p in res["programs"][:60]:
@@ -780,25 +875,65 @@ def render_data_access(res: dict) -> str:
                        f'({", ".join(p["actions"][:6])}{", ..." if len(p["actions"]) > 6 else ""})')
             if p.get("pages"):
                 out.append(f'        pages: {", ".join(p["pages"][:5])}{" ..." if len(p["pages"]) > 5 else ""}')
+    roots = res.get("no_known_caller") or []
+    if roots:
+        out.append(f"  NO KNOWN CALLER - entry points (API, jobs, Main) or unresolved calls ({len(roots)})")
+        out.extend(f'    {r["symbol"]}  {"/".join(r["access"])}  {r["file_path"]}:{r["line"]}' for r in roots[:cap])
+        if len(roots) > cap:
+            out.append(_more(len(roots), cap, full))
     t = res.get("touches")
     if t:
         for title, key in (("WRITES", "writes"), ("READS", "reads"), ("EXECUTES", "executes")):
             if t[key]:
                 out.append(f"  {title} ({len(t[key])})")
-                for e in t[key][:40]:
+                for e in t[key][:cap]:
                     chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
                     out.append(f'    [{e["confidence"]}] {e["target"]}  {e["file_path"]}:{e["line"]}  {e["op"]}{chain}')
         if t["dynamic_sql"]:
             out.append(f'  DYNAMIC SQL inside ({len(t["dynamic_sql"])}) - targets cannot be determined')
-            for e in t["dynamic_sql"][:10]:
+            for e in t["dynamic_sql"][:cap // 4 + 1]:
                 out.append(f'    {e["file_path"]}:{e["line"]}  {e["evidence"][:100]}')
     if res["possible"]:
         out.append(f'  POSSIBLE (uncertain: dynamic SQL, EF SaveChanges on tracked entities) ({len(res["possible"])})')
-        out.extend(_da_line(e) for e in res["possible"][:20])
+        out.extend(_da_line(e) for e in res["possible"][:cap // 2 or 1])
     if not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
         out.append("  no recorded access")
-    for n in res.get("notes", []):
+    for n in res.get("notes", []) if full else []:
         out.append(f"note: {n}")
+    return "\n".join(out)
+
+
+def render_impact(res: dict, full: bool = False) -> str:
+    cap = 200 if full else 15
+    out = [f'Impact of changes since {res["base"]}: {len(res["changed"])} changed symbols']
+    for c in res["changed"][:cap]:
+        lines = ", ".join(f"{a}-{b}" if a != b else str(a) for a, b in c["lines"][:4])
+        out.append(f'  {c["type"]} {c["symbol"]}  {c["file_path"]}:{lines}')
+    if len(res["changed"]) > cap:
+        out.append(_more(len(res["changed"]), cap, full))
+    if res["unmapped_files"]:
+        out.append(f'  changed outside any symbol: {", ".join(res["unmapped_files"][:10])}'
+                   + (" ..." if len(res["unmapped_files"]) > 10 else ""))
+    if res["tables"]:
+        tables: dict[str, set[str]] = defaultdict(set)
+        names: dict[str, str] = {}
+        for t in res["tables"]:  # SQL Server names are case-insensitive: SFC_MLot and SFC_Mlot are one table
+            names.setdefault(t["target"].lower(), t["target"])
+            tables[t["target"].lower()].add(t["access"])
+        out.append(f"  TABLES / PROCEDURES ACCESSED BY CHANGED CODE ({len(tables)})")
+        out.extend(f'    {names[k]}  {"/".join(sorted(acc))}' for k, acc in sorted(tables.items())[:cap])
+    if res["programs"]:
+        out.append(f'  AFFECTED PROGRAMS ({len(res["programs"])})')
+        for p in res["programs"]:
+            out.append(f'    [{p["confidence"]}] {p["program"]}  {p["file_path"]}  ({", ".join(p["actions"][:6])}'
+                       f'{", ..." if len(p["actions"]) > 6 else ""})')
+            if p.get("pages"):
+                out.append(f'        pages: {", ".join(p["pages"][:5])}{" ..." if len(p["pages"]) > 5 else ""}')
+    if res["no_known_caller"]:
+        out.append(f'  NO KNOWN CALLER ({len(res["no_known_caller"])})')
+        out.extend(f'    {r["symbol"]}  {r["file_path"]}:{r["line"]}' for r in res["no_known_caller"][:cap])
+    if not res["changed"] and not res["unmapped_files"]:
+        out.append("  no changes")
     return "\n".join(out)
 
 
@@ -806,9 +941,13 @@ def render_status(st: dict) -> str:
     import datetime as _dt
 
     when = _dt.datetime.fromtimestamp(st["last_indexed_at"]).strftime("%Y-%m-%d %H:%M:%S") if st["last_indexed_at"] else "never"
-    out = [f'index state: {st["state"].upper()}',
+    srv = st.get("server") or {}
+    out = [f'index state: {st["state"].upper()}   server: {srv.get("version", "?")}',
            f'last indexed: {when}   files: {st["indexed_files"]}   symbols: {st["symbols"]}   chunks: {st["chunks"]}',
            f'embedder: {st["embedder"]}   index version: {st["index_version"]}']
+    if srv.get("code_changed_since_start"):
+        out.append("warning: the indexer's code changed on disk after this process started; restart the MCP server "
+                   "(new Claude Code session) to run it")
     g = st["git"]
     if g["current"] is None and g["indexed"] is None:
         out.append("git: not a git work tree")

@@ -210,6 +210,7 @@ EF_FILES = {
     public virtual DbSet<Shipment> Shipments { get; set; }
 } }
 ''',
+    "Sub.cs": "namespace Acme { public class SubCtx : Ctx { } public class NotEf { } }\n",
     "Map.cs": '''namespace Acme { public class Model { void Build(DbModelBuilder mb) { mb.Entity<Shipment>().ToTable("MES_Ship"); } } }
 ''',
     "Ctl.cs": '''namespace Acme { public class Ctl {
@@ -220,6 +221,9 @@ EF_FILES = {
         o.Lines.Add(log);
         var q = from s in IMES.Shipments where s.Id == 1 select s;
     }
+    NotEf other;
+    public void Local() { using (var db = new SubCtx()) { db.TCM_CamLog.Where(a => a.Id == 2); } }
+    public void Odd() { other.TCM_CamLog.Where(a => a.Id == 3); }
     public void Rename(int id) {
         var log = IMES.TCM_CamLog.Find(id);
         log.Name = "x";
@@ -238,6 +242,9 @@ def test_ef_linq_on_dbset_members_is_data_access(tmp_path):
         res = t.data_access("TCM_CamLog")
         assert {(e["source"].rsplit(".", 1)[-1], e["op"]) for e in res["writers"]} == {("Save", "insert")}
         assert any(e["source"].endswith("Save") for e in res["readers"])
+        conf = {e["source"].rsplit(".", 1)[-1]: e["confidence"] for e in res["readers"]}
+        # field typed Ctx / local new SubCtx (derives from Ctx): confirmed; a non-context receiver stays probable
+        assert (conf["Save"], conf["Local"], conf["Odd"]) == ("confirmed", "confirmed", "probable")
         assert t.data_access("Shipments")["found"] is False  # resolved to its mapped table name
         # Shipment is mapped to MES_Ship
         mapped = t.data_access("MES_Ship")["readers"]
@@ -341,5 +348,72 @@ namespace E { public class Repo { IDbConnection _db;
         assert "UPDATE MES_X" in t.optimized_context(sql_path, [2], 1)["context"]
         with pytest.raises(ValueError):
             t.optimized_context(str(tmp_path / "secret.txt"), [1], 1)
+    finally:
+        t.indexer.close()
+
+
+def test_data_access_summary_by_default_full_on_request(tools):
+    from local_codebase_indexer.query import render_data_access
+    res = tools.data_access("MES_ScrapRecord")
+    e = res["writers"][0]
+    res = {**res, "writers": [dict(e, line=i) for i in range(1, 9)]}
+    short, full = render_data_access(res), render_data_access(res, full=True)
+    assert "... 3 more (detail=true" in short and "note:" not in short
+    assert "more" not in full.split("READ BY")[0] and "note:" in full
+    assert "USED BY PROGRAMS" in short
+
+
+def test_related_files_only_on_request(tools):
+    assert tools.semantic_search("scrap record", limit=3)["related_files"] == []
+    assert tools.semantic_search("scrap record", limit=3, related=True)["related_files"]
+
+
+def test_paths_without_a_controller_list_their_root(tmp_path):
+    for rel, content in PIPE_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    (tmp_path / "Job.cs").write_text(
+        "namespace Acme { public class NightlyJob { WipApp _w;\n  public void Run() {\n    _w.Run(1);\n  }\n} }\n",
+        encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        res = t.data_access("MES_Pipe")
+        assert [p["program"] for p in res["programs"]] == ["WK0001"]
+        assert [r["symbol"] for r in res["no_known_caller"]] == ["Acme.NightlyJob.Run"]
+    finally:
+        t.indexer.close()
+
+
+def _git(root, *args):
+    import subprocess
+    subprocess.run(["git", "-C", str(root), "-c", "user.email=t@example.com", "-c", "user.name=t", *args],
+                   check=True, capture_output=True)
+
+
+def test_impact_maps_a_diff_to_symbols_tables_programs_and_pages(tmp_path):
+    for rel, content in PIPE_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    page = tmp_path / "Views" / "WK0001" / "WK0001.cshtml"
+    page.parent.mkdir(parents=True)
+    page.write_text("<script>\nfetch('@Url.Action(\"Save\")');\n</script>\n", encoding="utf-8")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    steps = tmp_path / "Steps.cs"
+    steps.write_text(steps.read_text(encoding="utf-8").replace("DELETE FROM MES_Pipe", "DELETE FROM MES_Pipe /* x */"),
+                     encoding="utf-8")
+    (tmp_path / "notes.md").write_text("new file\n", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        res = t.impact()
+        assert [c["symbol"] for c in res["changed"]] == ["Acme.WriteLot.Process"]
+        assert "notes.md" in res["unmapped_files"]  # untracked, no symbols
+        assert {(x["target"], x["access"]) for x in res["tables"]} == {("MES_Pipe", "write")}
+        assert [(p["program"], p["pages"]) for p in res["programs"]] == [("WK0001", ["Views/WK0001/WK0001.cshtml"])]
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "change")
+        assert [c["symbol"] for c in t.impact("HEAD~1")["changed"]] == ["Acme.WriteLot.Process"]
+        assert t.impact()["changed"] == []
+        with pytest.raises(ValueError):
+            t.impact("--output=x")
     finally:
         t.indexer.close()

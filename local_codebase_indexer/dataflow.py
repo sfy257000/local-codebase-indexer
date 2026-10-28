@@ -182,14 +182,17 @@ def _program(sym: sqlite3.Row) -> str | None:
     return stem[:-len("Controller")] if stem.endswith("Controller") and stem != "Controller" else stem
 
 
-def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> list[dict]:
-    """Controller actions that reach the accessing methods through the C# call graph, one entry per program."""
+def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Controller actions that reach the accessing methods through the C# call graph (one entry per program), and
+    the methods on those paths that have no confirmed / probable caller at all (API, jobs, Main, or calls the graph
+    could not resolve)."""
     queue = deque()
     for e in entries:
-        if e["source_type"] in _METHOD_KINDS and e["access"] in ("read", "write", "exec"):
+        if e["source_type"] in _METHOD_KINDS and e["access"] != "map":
             queue.append((e["source_id"], e["access"], 0, e["confidence"]))
     seen: set[tuple[str, str]] = set()
     progs: dict[str, dict] = {}
+    roots: dict[str, dict] = {}
     while queue:
         sid, access, depth, conf = queue.popleft()
         if (sid, access) in seen:
@@ -210,16 +213,20 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> lis
             continue
         if depth >= ENTRY_DEPTH:
             continue
-        for r in conn.execute(
-                "SELECT caller_id, confidence FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
-                (sid,)):
-            queue.append((r["caller_id"], access, depth + 1, max(conf, r["confidence"], key=_CONF.__getitem__)))
+        parents = [(r["caller_id"], max(conf, r["confidence"], key=_CONF.__getitem__)) for r in conn.execute(
+            "SELECT caller_id, confidence FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
+            (sid,))]
         # callers of the interface method this one implements may dispatch here (pipelines: foreach step.Run())
-        for r in conn.execute(
-                "SELECT im.id FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
-                "JOIN symbols i ON i.symbol_name = b.name AND i.symbol_type = 'interface' "
-                "JOIN symbols im ON im.parent_id = i.id AND im.symbol_name = m.symbol_name WHERE m.id = ?", (sid,)):
-            queue.append((r["id"], access, depth + 1, max(conf, "probable", key=_CONF.__getitem__)))
+        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__)) for r in conn.execute(
+            "SELECT im.id FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
+            "JOIN symbols i ON i.symbol_name = b.name AND i.symbol_type = 'interface' "
+            "JOIN symbols im ON im.parent_id = i.id AND im.symbol_name = m.symbol_name WHERE m.id = ?", (sid,))]
+        for parent, pconf in parents:
+            queue.append((parent, access, depth + 1, pconf))
+        if not parents and sym["symbol_type"] in _METHOD_KINDS:
+            root = roots.setdefault(sid, {"symbol": sym["qualified_name"] or sym["symbol_name"],
+                                          "file_path": sym["file_path"], "line": sym["start_line"], "access": set()})
+            root["access"].add(access)
     out = []
     for p in sorted(progs.values(), key=lambda p: p["program"]):
         ids = sorted(p.pop("ids"))
@@ -227,7 +234,8 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> lis
             f"SELECT s.file_path FROM calls c JOIN symbols s ON s.id = c.caller_id WHERE s.symbol_type = 'page' "
             f"AND c.callee_id IN ({','.join('?' * len(ids))})", ids)})
         out.append({**p, "access": sorted(p["access"]), "actions": sorted(p["actions"]), "pages": pages})
-    return out
+    no_caller = [{**r, "access": sorted(r["access"])} for r in sorted(roots.values(), key=lambda r: r["file_path"])]
+    return out, no_caller
 
 
 def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX_DEPTH) -> dict:
@@ -266,9 +274,11 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         "executed_by": pick("exec")[:LIST_CAP],
         "mapped_by": _sort([e for e in confirmed if e["access"] == "map"]),
         "possible": _sort(possible)[:LIST_CAP],
-        "programs": _programs(conn, lk, confirmed + indirect),
+        "programs": [],
+        "no_known_caller": [],
         "notes": [],
     }
+    result["programs"], result["no_known_caller"] = _programs(conn, lk, confirmed + indirect)
     if kind in ("procedure", "function", "view") and defs:
         result["touches"] = _touches(conn, lk, [d for d in defs if d["type"] == kind], max_depth)
     # dynamic SQL elsewhere whose text names this object

@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("query", nargs="?")
     s.add_argument("--query", dest="query_opt")
     s.add_argument("--limit", type=int, default=5)
+    s.add_argument("--related", action="store_true", help="also list dependency-graph neighbours of the top hits")
 
     s = sub.add_parser("relations", aliases=["codebase_get_symbol_relations"], help="symbol dependency graph")
     s.add_argument("symbol", nargs="?")
@@ -51,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="who reads / writes / executes a table or stored procedure, and what a procedure touches")
     s.add_argument("object", nargs="?")
     s.add_argument("--object_name", dest="object_opt")
+    s.add_argument("--full", action="store_true", help="up to 40 entries per section instead of a 5-entry summary")
+
+    s = sub.add_parser("impact", aliases=["codebase_impact_analysis"],
+                       help="symbols, tables, programs and pages touched by a git diff")
+    s.add_argument("base", nargs="?", help="git revision or range (default: uncommitted work against HEAD)")
+    s.add_argument("--full", action="store_true", help="list every changed symbol")
 
     sub.add_parser("stats", help="show index statistics")
     sub.add_parser("status", aliases=["codebase_index_status"], help="index health: freshness, failures, consistency")
@@ -83,7 +90,8 @@ def main(argv: list[str] | None = None) -> int:
         from .mcp_server import serve
         return serve(root)
 
-    from .query import render_context, render_data_access, render_relations, render_search, render_status
+    from .query import (render_context, render_data_access, render_impact, render_relations, render_search,
+                        render_status)
 
     try:
         t = _tools(root)
@@ -99,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             if not q:
                 print("error: a query is required", file=sys.stderr)
                 return 2
-            res = t.semantic_search(q, args.limit)
+            res = t.semantic_search(q, args.limit, args.related)
             _emit(res, render_search(res), args.json)
         elif args.cmd in ("relations", "codebase_get_symbol_relations"):
             sym = args.symbol_opt or args.symbol
@@ -121,7 +129,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: an object name is required", file=sys.stderr)
                 return 2
             res = t.data_access(name)
-            _emit(res, render_data_access(res), args.json)
+            _emit(res, render_data_access(res, args.full), args.json)
+        elif args.cmd in ("impact", "codebase_impact_analysis"):
+            res = t.impact(args.base)
+            _emit(res, render_impact(res, args.full), args.json)
         elif args.cmd in ("status", "codebase_index_status"):
             res = t.index_status()
             _emit(res, render_status(res), args.json)

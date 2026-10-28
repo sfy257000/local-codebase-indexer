@@ -164,7 +164,7 @@ def test_mcp_protocol(project):
     assert handle(t, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     names = [x["name"] for x in handle(t, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
     assert names == ["codebase_semantic_search", "codebase_get_symbol_relations", "codebase_get_optimized_context",
-                     "codebase_get_data_access", "codebase_index_status"]
+                     "codebase_get_data_access", "codebase_impact_analysis", "codebase_index_status"]
     call = handle(t, {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
         "name": "codebase_semantic_search", "arguments": {"query": "GetLot", "limit": 2}}})
     assert call["result"]["isError"] is False and "GetLot" in call["result"]["content"][0]["text"]
@@ -302,7 +302,7 @@ def test_mcp_status_does_not_disable_auto_refresh(project):
     handle(t, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": "codebase_index_status", "arguments": {}}})
     (root / "web/late.ts").write_text("export class LateOne {}\n", encoding="utf-8")
-    t._fresh = False
+    t._checked_at -= 3600  # a long-lived server, an hour later: the next query must re-check
     res = handle(t, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                      "params": {"name": "codebase_semantic_search", "arguments": {"query": "LateOne"}}})
     assert "web/late.ts" in res["result"]["content"][0]["text"]
@@ -386,3 +386,57 @@ def test_project_ignore_file_and_minified_files_are_skipped(tmp_path):
     paths = {r[0] for r in t.conn.execute("SELECT file_path FROM files")}
     t.indexer.close()
     assert paths == {"App.cs", "Models/Db.Context.cs"}  # generated EF contexts carry the DbSets
+
+
+def test_a_file_failing_mid_insert_leaves_no_rows_and_others_are_kept(tmp_path, monkeypatch):
+    from local_codebase_indexer import core
+    (tmp_path / "Good.cs").write_text("class Good { void A() { } }\n", encoding="utf-8")
+    (tmp_path / "Bad.cs").write_text("class Bad { void B() { } }\n", encoding="utf-8")
+    real = core.search_text_for
+
+    def boom(header, text):
+        if "Bad" in text:
+            raise RuntimeError("boom")
+        return real(header, text)
+
+    monkeypatch.setattr(core, "search_text_for", boom)
+    t = CodebaseTools(str(tmp_path))
+    st = t.refresh()
+    one = lambda sql: t.conn.execute(sql).fetchone()[0]  # noqa: E731
+    assert st.failed == 1
+    assert one("SELECT COUNT(*) FROM symbols WHERE file_path='Bad.cs'") == 0
+    assert one("SELECT COUNT(*) FROM chunk_metadata WHERE file_path='Bad.cs'") == 0
+    assert one("SELECT COUNT(*) FROM symbols WHERE file_path='Good.cs'") > 0
+    assert t.index_status()["consistency"]["ok"]
+    t.indexer.close()
+
+
+def test_comment_terms_are_mined_and_expand_chinese_queries(tmp_path):
+    lines = ["namespace E { public class Wip {"]
+    for name in ("ReceiveLot", "ReceiveWip", "ReceiveSlip", "ReceiveMrb", "ReceiveOut", "ReceiveStock"):
+        lines += ["  /// <summary>", "  /// 收帳處理", "  /// </summary>", f"  public void {name}() {{ }}"]
+    lines += [f"  public void Filler{i}Work() {{ }}" for i in range(300)]
+    lines += ["} }", "namespace E { public class Gate { public void ReceiveFromGate() { } } }"]
+    (tmp_path / "Wip.cs").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        t.refresh()
+        assert ("收帳", "receive") in [tuple(r) for r in t.conn.execute("SELECT gram, word FROM mined_terms")]
+        assert "receive" in t._mined_expansion("收帳")
+        # the uncommented method is reached through the mined word
+        top = [r["symbol"] for r in t.semantic_search("收帳", limit=10)["results"]]
+        assert "E.Gate.ReceiveFromGate" in top
+    finally:
+        t.indexer.close()
+
+
+def test_status_reports_version_and_code_changed_after_start(project, monkeypatch):
+    from local_codebase_indexer import __version__, query
+    from local_codebase_indexer.query import render_status
+    _, t = project
+    monkeypatch.setattr(query, "_STARTED", 4102444800)  # 2100: nothing changed since
+    st = t.index_status()
+    assert st["server"] == {"version": __version__, "code_changed_since_start": False}
+    assert f"server: {__version__}" in render_status(st) and "restart" not in render_status(st)
+    monkeypatch.setattr(query, "_STARTED", 0)  # 1970: every source file is newer
+    assert "restart the MCP server" in render_status(t.index_status())

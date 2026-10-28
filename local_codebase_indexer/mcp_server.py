@@ -6,7 +6,8 @@ import json
 import sys
 
 from . import __version__
-from .query import CodebaseTools, render_context, render_data_access, render_relations, render_search, render_status
+from .query import (CodebaseTools, render_context, render_data_access, render_impact, render_relations, render_search,
+                    render_status)
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -19,6 +20,7 @@ TOOLS = [
             "properties": {
                 "query": {"type": "string", "description": "Semantic explanation of what you are looking for."},
                 "limit": {"type": "integer", "description": "Maximum chunks to return (default 5).", "default": 5},
+                "related": {"type": "boolean", "description": "Also list files linked to the top hits in the dependency graph.", "default": False},
             },
             "required": ["query"],
         },
@@ -55,8 +57,20 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "object_name": {"type": "string", "description": 'Table, view or procedure name, optionally schema qualified, e.g. "MES_Lot" or "dbo.usp_Lot_UpdateStatus".'},
+                "detail": {"type": "boolean", "description": "List up to 40 entries per section instead of the 5-entry summary (programs are always complete).", "default": False},
             },
             "required": ["object_name"],
+        },
+    },
+    {
+        "name": "codebase_impact_analysis",
+        "description": "Impact of a change: symbols on changed lines (git diff), tables / procedures they access, and the programs, Razor pages and caller-less entry points that reach them. Use before committing or when reviewing a branch.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "base": {"type": "string", "description": 'Git revision or range to diff against, e.g. "main", "HEAD~3", "origin/main...HEAD". Omit for uncommitted work (staged, unstaged, untracked).'},
+                "detail": {"type": "boolean", "description": "List every changed symbol instead of the first 15.", "default": False},
+            },
         },
     },
     {
@@ -69,13 +83,15 @@ TOOLS = [
 
 def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
     if name == "codebase_semantic_search":
-        return render_search(tools.semantic_search(args["query"], args.get("limit", 5)))
+        return render_search(tools.semantic_search(args["query"], args.get("limit", 5), bool(args.get("related"))))
     if name == "codebase_get_symbol_relations":
         return render_relations(tools.symbol_relations(args["symbol_name"], args.get("relation_direction", "both")))
     if name == "codebase_get_optimized_context":
         return render_context(tools.optimized_context(args["file_path"], args["focus_lines"], args.get("padding_lines", 15)))
     if name == "codebase_get_data_access":
-        return render_data_access(tools.data_access(args["object_name"]))
+        return render_data_access(tools.data_access(args["object_name"]), bool(args.get("detail")))
+    if name == "codebase_impact_analysis":
+        return render_impact(tools.impact(args.get("base")), bool(args.get("detail")))
     if name == "codebase_index_status":
         return render_status(tools.index_status())
     raise KeyError(f"unknown tool: {name}")
