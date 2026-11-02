@@ -26,6 +26,15 @@ local-codebase-indexer --root <project> status                     # is the inde
 
 Put `--json` before the subcommand for JSON output. The index lives in `<project>/.ai_context/` (git-ignored automatically).
 
+## Install as a Claude Code plugin
+
+```text
+/plugin marketplace add sfy257000/local-codebase-indexer
+/plugin install local-codebase-indexer@local-codebase-indexer
+```
+
+Needs `uv` (`pip install uv`). Then restart Claude Code.
+
 ## Register as an MCP server (Claude Code)
 
 ```bash

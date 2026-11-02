@@ -15,6 +15,15 @@ pipx install local-codebase-indexer
 
 从源码：`pip install -e .`（在 clone 下 `bin/indexer` 仍可使用）。
 
+### 作为 Claude Code plugin 安装
+
+```text
+/plugin marketplace add sfy257000/local-codebase-indexer
+/plugin install local-codebase-indexer@local-codebase-indexer
+```
+
+会为你打开的项目注册 MCP 服务器（实际运行 `uvx local-codebase-indexer --root <项目> serve`，所以要先装 [uv](https://docs.astral.sh/uv/)：`pip install uv`）。安装后重启 Claude Code。
+
 ## 使用（CLI）
 
 ```bash

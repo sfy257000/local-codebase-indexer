@@ -1,0 +1,14 @@
+{
+  "name": "local-codebase-indexer",
+  "description": "Local code index for AI coding assistants: search, call relations and SQL table/procedure access",
+  "owner": {
+    "name": "sfy257000"
+  },
+  "plugins": [
+    {
+      "name": "local-codebase-indexer",
+      "source": "./plugins/local-codebase-indexer",
+      "description": "MCP server that indexes your project locally (SQLite, no cloud) for code search, callers and SQL data access"
+    }
+  ]
+}

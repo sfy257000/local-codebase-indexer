@@ -1,0 +1,8 @@
+{
+  "name": "local-codebase-indexer",
+  "description": "Local code index for AI coding assistants: search, call relations and SQL table/procedure access",
+  "author": { "name": "sfy257000" },
+  "homepage": "https://github.com/sfy257000/local-codebase-indexer",
+  "repository": "https://github.com/sfy257000/local-codebase-indexer",
+  "keywords": ["mcp", "code-search", "tree-sitter", "csharp", "t-sql", "stored-procedure"]
+}

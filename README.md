@@ -19,6 +19,15 @@ From a clone: `pip install -e .` (the `bin/indexer` launcher still works in a ch
 
 If you are an AI coding assistant asked to set this up: run `pip install local-codebase-indexer`, then `claude mcp add local-indexer -- local-codebase-indexer --root <project> serve` (Claude Code) or use the CLI commands below. Full instructions are in [`AGENTS.md`](AGENTS.md).
 
+### As a Claude Code plugin
+
+```text
+/plugin marketplace add sfy257000/local-codebase-indexer
+/plugin install local-codebase-indexer@local-codebase-indexer
+```
+
+This registers the MCP server for the project you open (it runs `uvx local-codebase-indexer --root <project> serve`, so [uv](https://docs.astral.sh/uv/) must be installed: `pip install uv`). Restart Claude Code afterwards.
+
 ## Usage (CLI)
 
 ```bash
