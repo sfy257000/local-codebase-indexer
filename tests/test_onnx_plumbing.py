@@ -135,6 +135,8 @@ def test_model_content_and_tokenizer_identity_trigger_rebuild(model_dir, tmp_pat
     content = (second / 'tokenizer.json').read_text()
     (second / 'tokenizer.json').write_text(content + '\n')
     assert OnnxEmbedder(str(second)).name != b.name
+    with pytest.raises(ValueError, match='changed while loaded'):
+        b.embed(['lot'])
 
 
 def test_external_onnx_weights_are_part_of_identity(model_dir, tmp_path):
@@ -146,6 +148,10 @@ def test_external_onnx_weights_are_part_of_identity(model_dir, tmp_path):
                     all_tensors_to_one_file=True, location='weights.data', size_threshold=0)
     before = OnnxEmbedder(str(dest))
     previous = before.embed(['lot']).copy()
+    # Windows denies writes while ORT maps an external tensor. Release that map
+    # before modifying the fixture; the old embedder must still reject its
+    # changed artifacts before it can attempt to use the released session.
+    before.session = None
     path = dest / 'weights.data'
     values = np.frombuffer(path.read_bytes(), dtype=np.float32).copy()
     path.write_bytes((-values).tobytes())
