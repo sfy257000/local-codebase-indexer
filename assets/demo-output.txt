@@ -1,0 +1,23 @@
+Local Codebase Indexer: SQL Server -> C# -> page
+Bundled synthetic sample. No SQL Server, .NET runtime or API key required.
+Indexed 9 files; 0 failed.
+
+table Sales_OrderHeader
+  defined in Sql/Sales_OrderHeader.sql:1
+  WRITTEN BY (2)
+    [confirmed] procedure dbo.usp_ApproveOrder  Sql/usp_ApproveOrder.sql:4  update (sql)
+    [confirmed] method Shop.Data.OrderRepository.Approve  Data/OrderRepository.cs:24  update (csharp_sp) via usp_ApproveOrder
+  READ BY (1)
+    [confirmed] method Shop.Data.OrderRepository.Get  Data/OrderRepository.cs:19  select (csharp_sql)
+  USED BY PROGRAMS (1)
+    [probable] Orders  read/write  Controllers/OrdersController.cs  (Approve, Details)
+        pages: Views/Orders/Details.cshtml
+note: Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method's callers.
+
+Verified 4/4 expected relationships: PASS
+Exact table mentions: 3 files; controller/page reachability is computed separately.
+Local timing: index 16.2 ms; data-access 0.6 ms.
+This fixture does not establish accuracy or time savings on your project.
+
+Try your project:
+  local-codebase-indexer --root "/path/to/project" data-access YourTable

@@ -34,6 +34,7 @@ jobs:
           "$RUNNER_TEMP/package-env/bin/pip" install "$GITHUB_WORKSPACE"/dist/*.whl pytest onnx onnxruntime tokenizers
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer --version
+          "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer demo --json
           tar -xzf "$GITHUB_WORKSPACE"/dist/*.tar.gz
           "$RUNNER_TEMP/package-env/bin/python" -m pytest -q "$RUNNER_TEMP"/local_codebase_indexer-*/tests
   project-evaluation:

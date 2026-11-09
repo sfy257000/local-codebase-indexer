@@ -1,10 +1,14 @@
 # local-codebase-indexer
 
-> Local codebase indexer and context provider for AI coding assistants. MCP server and CLI, SQLite storage, no cloud. Understands C#, Python, JS/TS and T-SQL, including which code reads or writes a table or stored procedure.
+> Trace SQL Server tables and stored procedures to C# callers, controller actions and Razor pages in a local source tree. MCP server and CLI with confidence labels. Static analysis; verify inferred edges in source.
 
-Install: `pip install local-codebase-indexer`, then `local-codebase-indexer --root <project> index`.
+Install: `pip install local-codebase-indexer`, then `local-codebase-indexer demo` for a bundled synthetic example. For your source tree: `local-codebase-indexer --root <project> data-access <table>`.
 
 - [AGENTS.md](AGENTS.md): install, commands, MCP registration, how to read confidence levels
 - [README.md](README.md): features, design, known limits
 - [TODO.md](TODO.md): planned work
 - [benchmarks/README.md](benchmarks/README.md): how search quality is measured
+
+- [Case study](docs/case-study.md): reproducible synthetic example and raw results
+- [Reference](docs/reference.md): complete commands, configuration and limitations
+- [LICENSE](LICENSE): MIT

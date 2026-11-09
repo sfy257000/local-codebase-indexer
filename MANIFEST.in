@@ -8,3 +8,6 @@ prune benchmarks/__pycache__
 global-exclude __pycache__ *.py[cod]
 prune benchmarks/corpus/.ai_context
 include bin/indexer
+include LICENSE CONTRIBUTING.md
+graft docs
+graft assets

@@ -1,0 +1,6 @@
+@model Shop.Models.Order
+<h1>Order details</h1>
+<button onclick="fetch('@Url.Action("Approve", "Orders")', {method: 'POST'})">
+    Approve order
+</button>
+<a href="@Url.Action("Details", "Orders")">Refresh details</a>

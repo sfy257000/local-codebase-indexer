@@ -1,0 +1,31 @@
+name: Wrong or missing navigation result
+description: Report an incorrect caller, SQL access, page, or search result with a small reproduction.
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Package, Python, and OS versions
+      placeholder: local-codebase-indexer --version; python --version; OS
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command and actual output
+      description: Include confidence labels and doctor output if a file is missing. Remove private paths and secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result and source evidence
+      description: Which file, symbol, or SQL statement supports the expected relationship?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal shareable reproduction
+      description: A small synthetic example is sufficient. Do not attach private source or index databases.
+    validations:
+      required: true

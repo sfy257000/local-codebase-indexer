@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- MIT license and SPDX package metadata.
+- Bundled `demo` command traces a synthetic SQL Server table through a stored procedure, C# callers, controller actions, and a Razor page without a database or .NET runtime. JSON output includes source evidence, four scenario checks, an exact-reference baseline, and measured timings.
+- `demo --output` saves the fixture in a new or empty directory and refuses to overwrite user content.
+- English, Traditional Chinese, and Simplified Chinese READMEs focus on the SQL Server / C# workflow with a three-step first run and a reproducible 32-second demonstration.
+- Recorded case study, raw evidence, contribution guide, issue forms, and community/directory submission copy.
+- Official MCP Registry publication follows successful PyPI publication using GitHub OIDC and a pinned, signature-verified publisher.
+
 ## 0.7.0
 
 - Stable search ranking across page sizes/offsets, with query- and revision-bound continuation cursors.

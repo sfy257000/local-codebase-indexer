@@ -41,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    s = sub.add_parser("demo", help="trace a bundled SQL Server / C# / Razor sample without a database")
+    s.add_argument("--output", help="keep the sample in a new or empty directory")
+
     s = sub.add_parser("index", help="build / incrementally refresh the index")
     s.add_argument("--force", action="store_true", help="re-index every file")
 
@@ -132,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "serve":
             from .mcp_server import serve
             return serve(root)
+        if args.cmd == "demo":
+            from .demo import run_demo, render_demo
+            res = run_demo(args.output)
+            _emit(res, render_demo(res), args.json)
+            return 0 if res['passed'] else 3
         t = _tools(root)
         if args.cmd == "index":
             st = t.refresh(force=args.force).as_dict()
