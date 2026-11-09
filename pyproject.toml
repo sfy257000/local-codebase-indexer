@@ -1,12 +1,14 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-codebase-indexer"
 dynamic = ["version"]
-description = "Local codebase indexer and context provider for AI coding assistants: MCP server and CLI with SQL data-access and C# call relations. No cloud, no server."
+description = "Trace SQL Server tables to C# callers and Razor pages locally. MCP server and CLI for code search and change impact."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "sfy257000" }]
 keywords = [
@@ -39,6 +41,7 @@ dependencies = [
 [project.optional-dependencies]
 onnx = ["onnxruntime", "tokenizers"]
 dev = ["pytest"]
+media = ["Pillow>=10"]
 
 [project.scripts]
 local-codebase-indexer = "local_codebase_indexer.cli:main"
@@ -47,9 +50,18 @@ local-codebase-indexer = "local_codebase_indexer.cli:main"
 Homepage = "https://github.com/sfy257000/local-codebase-indexer"
 Repository = "https://github.com/sfy257000/local-codebase-indexer"
 Issues = "https://github.com/sfy257000/local-codebase-indexer/issues"
+Documentation = "https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/reference.md"
+"Case study" = "https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/case-study.md"
 
 [tool.setuptools.dynamic]
 version = { attr = "local_codebase_indexer.__version__" }
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.packages.find]
 include = ["local_codebase_indexer*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+local_codebase_indexer = ["demo_project/*.md", "demo_project/**/*.cs", "demo_project/**/*.sql", "demo_project/**/*.cshtml"]

@@ -4,7 +4,7 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 
 ## Next
 
-0. **Publish to the MCP registry** (not done yet). PyPI 0.3.0 is out and carries the `mcp-name` marker; `server.json` is ready. Run `mcp-publisher login github` then `mcp-publisher publish` from the repo folder, then verify with `curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=local-codebase-indexer"`. Repeat after each release (bump both versions in `server.json`).
+0. **MCP Registry discovery**: the 0.8.0 release workflow publishes `server.json` after PyPI succeeds, using GitHub OIDC. Verify the live entry after each release; a local manifest alone does not establish publication. See [discovery instructions](docs/discovery.md).
 1. **Resolve `FROM a JOIN b ON ..., c`** (a comma list after a JOIN loses `c`), non-sink SQL proc-name literals (`Run("usp_X")`), EF `this.ToTable(..)` inside `EntityTypeConfiguration<T>` (entity not taken from the base class yet), and EF updates through tracked entities when the entity was loaded in another method than the one calling `SaveChanges` (only same-method read + `SaveChanges` is listed, as uncertain).
 2. **C# call graph gaps**: overload resolution by argument type, delegates / lambdas / extension methods, call chains longer than one level. Without Roslyn these stay approximate; edges carry `confirmed` / `probable` / `candidate`.
 

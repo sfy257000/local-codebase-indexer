@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sfy257000/local-codebase-indexer",
   "title": "Local Codebase Indexer",
-  "description": "Local code index for AI assistants: search, call relations and SQL table/procedure access.",
+  "description": "Trace SQL Server tables to C# callers and Razor pages locally; MCP server and CLI.",
   "repository": {
     "url": "https://github.com/sfy257000/local-codebase-indexer",
     "source": "github"
   },
-  "version": "0.7.0",
+  "version": "0.8.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "local-codebase-indexer",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

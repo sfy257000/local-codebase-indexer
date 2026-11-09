@@ -55,7 +55,7 @@ pip install -e ".[dev,onnx]" onnx && python -m pytest -q
 python benchmarks/run_benchmark.py --compare benchmarks/baseline.json
 ```
 
-The package is `local_codebase_indexer/`. See `README.md` for design notes and known limits, `TODO.md` for planned work.
+The package is `local_codebase_indexer/`. See `docs/reference.md` for design notes and known limits, `TODO.md` for planned work.
 
 ## Diagnostics and bounded results (0.6.0)
 
@@ -73,3 +73,7 @@ The package is `local_codebase_indexer/`. See `README.md` for design notes and k
 - `impact A..B` and `A...B` use both Git snapshots and label target lines `after`; a single base revision compares with the working tree.
 - Context clipping keeps focus lines. Synonym configuration hot-reloads. ONNX identities include model/tokenizer/configuration fingerprints.
 - Future Release events validate and build once, then use the same files for PyPI and GitHub attachments. Validate locally with `python scripts/release_assets.py --tag v<package-version> --dist <directory>`; add `--upload` only when publishing was requested.
+
+## First-run demo (0.8.0)
+
+Run `local-codebase-indexer demo` without a database or model. It uses a temporary bundled synthetic project, checks four relationships, and leaves the current project alone. `--output <new-or-empty-directory>` keeps a copy; `--json` returns evidence and timings. This is a supported-path demonstration, not a production accuracy or time-savings measurement.

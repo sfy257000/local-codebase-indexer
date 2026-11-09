@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "sample_kind": "synthetic",
+  "package_version": "0.8.0",
+  "scenario": "Trace Sales_OrderHeader to C# code, a controller, and a Razor page",
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux",
+    "embedder": "hashing-384-v1"
+  },
+  "sample_directory": null,
+  "index": {
+    "scanned": 9,
+    "added": 9,
+    "updated": 0,
+    "unchanged": 0,
+    "deleted": 0,
+    "skipped": 0,
+    "failed": 0,
+    "chunks": 23,
+    "symbols": 29,
+    "warnings": []
+  },
+  "timing_ms": {
+    "index": 16.199,
+    "data_access": 0.565
+  },
+  "literal_reference_files": [
+    "Data/OrderRepository.cs",
+    "Sql/Sales_OrderHeader.sql",
+    "Sql/usp_ApproveOrder.sql"
+  ],
+  "data_access": {
+    "object": "Sales_OrderHeader",
+    "key": "sales_orderheader",
+    "found": true,
+    "kind": "table",
+    "definitions": [
+      {
+        "file_path": "Sql/Sales_OrderHeader.sql",
+        "line": 1,
+        "type": "table",
+        "qualified_name": "dbo.Sales_OrderHeader",
+        "id": "Sql/Sales_OrderHeader.sql#table:dbo.Sales_OrderHeader@1"
+      }
+    ],
+    "readers": [
+      {
+        "source": "Shop.Data.OrderRepository.Get",
+        "source_type": "method",
+        "source_id": "Data/OrderRepository.cs#method:Shop.Data.OrderRepository.Get@16",
+        "file_path": "Data/OrderRepository.cs",
+        "line": 19,
+        "target": "Sales_OrderHeader",
+        "op": "select",
+        "access": "read",
+        "via": "csharp_sql",
+        "confidence": "confirmed",
+        "evidence": "SELECT Id, Status FROM dbo.Sales_OrderHeader WHERE Id = @Id",
+        "detail": "",
+        "depth": 0,
+        "via_chain": []
+      }
+    ],
+    "writers": [
+      {
+        "source": "dbo.usp_ApproveOrder",
+        "source_type": "procedure",
+        "source_id": "Sql/usp_ApproveOrder.sql#procedure:dbo.usp_ApproveOrder@1",
+        "file_path": "Sql/usp_ApproveOrder.sql",
+        "line": 4,
+        "target": "Sales_OrderHeader",
+        "op": "update",
+        "access": "write",
+        "via": "sql",
+        "confidence": "confirmed",
+        "evidence": "UPDATE dbo.Sales_OrderHeader SET Status = 'Approved' WHERE Id = @Id;",
+        "detail": "",
+        "depth": 0,
+        "via_chain": []
+      },
+      {
+        "source": "Shop.Data.OrderRepository.Approve",
+        "source_type": "method",
+        "source_id": "Data/OrderRepository.cs#method:Shop.Data.OrderRepository.Approve@22",
+        "file_path": "Data/OrderRepository.cs",
+        "line": 24,
+        "target": "usp_ApproveOrder",
+        "op": "update",
+        "access": "write",
+        "via": "csharp_sp",
+        "confidence": "confirmed",
+        "evidence": "dbo.usp_ApproveOrder",
+        "detail": "",
+        "depth": 1,
+        "via_chain": [
+          "usp_ApproveOrder"
+        ]
+      }
+    ],
+    "executed_by": [],
+    "mapped_by": [],
+    "possible": [],
+    "programs": [
+      {
+        "program": "Orders",
+        "file_path": "Controllers/OrdersController.cs",
+        "access": [
+          "read",
+          "write"
+        ],
+        "actions": [
+          "Approve",
+          "Details"
+        ],
+        "confidence": "probable",
+        "pages": [
+          "Views/Orders/Details.cshtml"
+        ]
+      }
+    ],
+    "no_known_caller": [],
+    "notes": [
+      "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method's callers."
+    ],
+    "filters": {
+      "confidence": null
+    }
+  },
+  "relations": {
+    "symbol": "OrderRepository.Approve",
+    "definitions": [
+      {
+        "id": "Data/OrderRepository.cs#method:Shop.Data.OrderRepository.Approve@22",
+        "file_path": "Data/OrderRepository.cs",
+        "type": "method",
+        "qualified_name": "Shop.Data.OrderRepository.Approve",
+        "start_line": 22,
+        "end_line": 26,
+        "signature": "public void Approve(int id)",
+        "upstream": {
+          "callers": [
+            {
+              "symbol": "Shop.Services.OrderService.Approve",
+              "type": "method",
+              "file_path": "Services/OrderService.cs",
+              "line": 22,
+              "confidence": "confirmed",
+              "reason": "'_repository' is declared as OrderRepository"
+            }
+          ],
+          "callers_total": 1,
+          "implementations": [],
+          "inheritors_or_implementers": [],
+          "referenced_by": [],
+          "referenced_by_total": 0
+        }
+      }
+    ],
+    "note": "C# method calls are resolved by receiver type (confirmed / probable / candidate); type references and fields remain identifier-name matches; inheritance edges come from the AST"
+  },
+  "checks": {
+    "stored_procedure_writer": true,
+    "indirect_csharp_writer": true,
+    "controller_action": true,
+    "razor_page": true
+  },
+  "passed": true,
+  "limitations": [
+    "This is a synthetic fixture, not a production case or a general recall benchmark.",
+    "Literal search counts exact mentions; it does not measure manual investigation time.",
+    "Timings are machine-dependent. Confidence levels describe static analysis, not runtime proof."
+  ]
+}

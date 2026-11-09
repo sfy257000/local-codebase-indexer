@@ -1,0 +1,16 @@
+name: Maintenance workflow improvement
+description: Describe a concrete task the tool cannot help you complete yet.
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: What maintenance question are you trying to answer?
+      description: Include the source pattern, language, and expected output. Remove private details.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: What did you try, and where did it fall short?
+    validations:
+      required: true
