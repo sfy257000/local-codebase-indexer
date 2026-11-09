@@ -24,7 +24,7 @@ local-codebase-indexer --root <project> context <file> --lines 120 --padding 15
 local-codebase-indexer --root <project> status                     # is the index fresh?
 ```
 
-Put `--json` before the subcommand for JSON output. The index lives in `<project>/.ai_context/` (git-ignored automatically).
+Put `--json` before or after the subcommand for JSON output. The index lives in `<project>/.ai_context/` (git-ignored automatically).
 
 ## Install as a Claude Code plugin
 
@@ -41,7 +41,7 @@ Needs `uv` (`pip install uv`). Then restart Claude Code.
 claude mcp add local-indexer -- local-codebase-indexer --root <project> serve
 ```
 
-Tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_impact_analysis`, `codebase_index_status`.
+Tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_impact_analysis`, `codebase_index_status`, `codebase_index_doctor`.
 
 ## Reading the results
 
@@ -51,8 +51,16 @@ Tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_ge
 ## Working on this repo itself
 
 ```bash
-pip install -e ".[dev,onnx]" && python -m pytest -q
+pip install -e ".[dev,onnx]" onnx && python -m pytest -q
 python benchmarks/run_benchmark.py --compare benchmarks/baseline.json
 ```
 
 The package is `local_codebase_indexer/`. See `README.md` for design notes and known limits, `TODO.md` for planned work.
+
+## Diagnostics and bounded results (0.6.0)
+
+- `local-codebase-indexer --root <project> doctor --path <file>` explains exclusions.
+- `search <query> --file '*Repository*.cs' --language csharp --limit 5 --offset 5` filters before ranking. Follow `pagination.next_offset` in JSON.
+- `data-access <table> --confidence confirmed --limit 20 --offset 20` pages each section independently. JSON has section totals and next offsets; `--full` really lists every entry.
+- `impact` includes historical accesses and callers for removed code. `snapshot=before` line numbers refer to the base revision. Historical indexes are cached in `.ai_context/impact/`; deleting that cache is safe.
+- A missing root is an error; an empty or failed indexing run returns exit status 3. `--json` and `--root` work before or after the subcommand.

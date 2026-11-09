@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .ai_context/
 .pytest_cache/
+*.egg-info/

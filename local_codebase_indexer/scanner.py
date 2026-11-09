@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator
 
 import pathspec
@@ -53,13 +53,27 @@ def language_for(path: str) -> str | None:
 
 
 def _ignored(path: str, is_dir: bool, specs: list) -> bool:
+    ignored = False
     for base, spec in specs:
         rel = os.path.relpath(path, base).replace(os.sep, "/")
         if is_dir:
             rel += "/"
-        if spec.match_file(rel):
-            return True
-    return False
+        match = spec.check_file(rel).include
+        if match is not None:
+            ignored = match
+    return ignored
+
+
+@dataclass
+class ScanReport:
+    counts: dict[str, int] = field(default_factory=dict)
+    examples: dict[str, list[str]] = field(default_factory=dict)
+
+    def record(self, path: str, reason: str) -> None:
+        self.counts[reason] = self.counts.get(reason, 0) + 1
+        sample = self.examples.setdefault(reason, [])
+        if len(sample) < 10:
+            sample.append(path)
 
 
 def _read_lines(path: str) -> list[str]:
@@ -83,16 +97,21 @@ def extra_roots(root: str) -> list[str]:
     return out
 
 
-def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES) -> Iterator[ScannedFile]:
+def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES, report: ScanReport | None = None) -> Iterator[ScannedFile]:
     root = os.path.abspath(root)
+    if not os.path.isdir(root):
+        raise ValueError(f"project root is not an existing directory: {root}")
     spec = pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE + _read_lines(os.path.join(root, PROJECT_IGNORE_FILE)))
-    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes)
+    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes, report)
     for extra in extra_roots(root):
         yield from _walk(extra, [(extra, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE))],
-                         lambda p: p.replace(os.sep, "/"), max_bytes)
+                         lambda p: p.replace(os.sep, "/"), max_bytes, report)
 
 
-def _walk(top: str, specs: list, rel, max_bytes: int) -> Iterator[ScannedFile]:
+def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None = None) -> Iterator[ScannedFile]:
+    def record(path, reason):
+        if report is not None:
+            report.record(rel(path), reason)
     stack: list[tuple[str, list]] = [(top, specs)]
     while stack:
         directory, specs = stack.pop()
@@ -106,6 +125,7 @@ def _walk(top: str, specs: list, rel, max_bytes: int) -> Iterator[ScannedFile]:
         try:
             entries = sorted(os.scandir(directory), key=lambda e: e.name)
         except OSError:
+            record(directory, "unreadable_directory")
             continue
         subdirs = []
         for e in entries:
@@ -113,21 +133,33 @@ def _walk(top: str, specs: list, rel, max_bytes: int) -> Iterator[ScannedFile]:
                 is_dir = e.is_dir(follow_symlinks=False)
                 is_file = e.is_file(follow_symlinks=False)
             except OSError:
+                record(e.path, "unreadable")
                 continue
             if is_dir:
-                if e.name in ALWAYS_IGNORE_DIRS or _ignored(e.path, True, specs):
+                if e.name in ALWAYS_IGNORE_DIRS:
+                    record(e.path, "excluded_directory")
+                    continue
+                if _ignored(e.path, True, specs):
+                    record(e.path, "ignored_directory")
                     continue
                 subdirs.append((e.path, specs))
             elif is_file:
                 lang = language_for(e.name)
-                if lang is None or _ignored(e.path, False, specs):
+                if _ignored(e.path, False, specs):
+                    record(e.path, "ignored_file")
+                    continue
+                if lang is None:
+                    record(e.path, "unsupported_extension")
                     continue
                 try:
                     st = e.stat()
                 except OSError:
+                    record(e.path, "unreadable")
                     continue
                 if st.st_size > max_bytes:
+                    record(e.path, "too_large")
                     continue
+                record(e.path, "eligible")
                 yield ScannedFile(
                     rel_path=rel(e.path),
                     abs_path=e.path,
@@ -135,4 +167,50 @@ def _walk(top: str, specs: list, rel, max_bytes: int) -> Iterator[ScannedFile]:
                     size=st.st_size,
                     language=lang,
                 )
+            else:
+                record(e.path, "symlink_or_special_file")
         stack.extend(reversed(subdirs))
+
+
+def explain_path(root: str, path: str) -> dict:
+    """Explain a file without traversing excluded directories or reading its full contents."""
+    root = os.path.abspath(root)
+    target = os.path.abspath(os.path.join(root, path))
+    bases = [b for b in [root, *extra_roots(root)] if os.path.commonpath([b, target]) == b]
+    if not bases:
+        raise ValueError("path must stay inside the project root or an extra root")
+    base = max(bases, key=len)
+    relative = os.path.relpath(target, base)
+    specs = [(base, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE + (
+        _read_lines(os.path.join(root, PROJECT_IGNORE_FILE)) if base == root else [])))]
+    current = base
+    for part in relative.split(os.sep):
+        specs.append((current, pathspec.GitIgnoreSpec.from_lines(_read_lines(os.path.join(current, '.gitignore')))))
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            reason = 'symlink_or_special_file'
+            break
+        if not os.path.exists(current):
+            reason = 'missing'
+            break
+        is_dir = os.path.isdir(current)
+        if is_dir and part in ALWAYS_IGNORE_DIRS:
+            reason = 'excluded_directory'
+            break
+        if _ignored(current, is_dir, specs):
+            reason = 'ignored_directory' if is_dir else 'ignored_file'
+            break
+    else:
+        if os.path.isdir(target):
+            reason = 'directory'
+        elif language_for(target) is None:
+            reason = 'unsupported_extension'
+        elif os.path.getsize(target) > MAX_FILE_BYTES:
+            reason = 'too_large'
+        else:
+            try:
+                with open(target, 'rb') as f:
+                    reason = 'binary' if b'\x00' in f.read(8192) else 'eligible'
+            except OSError:
+                reason = 'unreadable'
+    return {'path': path, 'reason': reason, 'eligible': reason == 'eligible'}

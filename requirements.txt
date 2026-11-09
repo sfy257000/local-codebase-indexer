@@ -4,7 +4,7 @@ tree-sitter-python
 tree-sitter-javascript
 tree-sitter-typescript
 numpy
-pathspec
+pathspec>=0.12.1
 # optional: real transformer embeddings (set INDEXER_ONNX_MODEL)
 # onnxruntime
 # tokenizers

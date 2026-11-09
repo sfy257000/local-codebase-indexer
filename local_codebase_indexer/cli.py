@@ -19,6 +19,20 @@ def _emit(data, text: str, as_json: bool) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2) if as_json else text)
 
 
+def _positive(value: str) -> int:
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return n
+
+
+def _nonnegative(value: str) -> int:
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be nonnegative")
+    return n
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="local-codebase-indexer", description="Local codebase indexer & context provider")
     p.add_argument("--root", default=os.environ.get("INDEXER_ROOT", os.getcwd()), help="project root (default: cwd)")
@@ -32,7 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("search", aliases=["codebase_semantic_search"], help="hybrid semantic search")
     s.add_argument("query", nargs="?")
     s.add_argument("--query", dest="query_opt")
-    s.add_argument("--limit", type=int, default=5)
+    s.add_argument("--limit", type=_positive, default=5)
+    s.add_argument("--offset", type=_nonnegative, default=0)
+    s.add_argument("--file", dest="file_pattern", help="file glob, e.g. '*Repository*.cs'")
+    s.add_argument("--language", help="csharp, python, javascript, typescript, tsx or text")
     s.add_argument("--related", action="store_true", help="also list dependency-graph neighbours of the top hits")
 
     s = sub.add_parser("relations", aliases=["codebase_get_symbol_relations"], help="symbol dependency graph")
@@ -52,16 +69,24 @@ def build_parser() -> argparse.ArgumentParser:
                        help="who reads / writes / executes a table or stored procedure, and what a procedure touches")
     s.add_argument("object", nargs="?")
     s.add_argument("--object_name", dest="object_opt")
-    s.add_argument("--full", action="store_true", help="up to 40 entries per section instead of a 5-entry summary")
+    s.add_argument("--full", action="store_true", help="list every entry instead of a 5-entry summary")
+    s.add_argument("--limit", type=_positive, help="page size per section")
+    s.add_argument("--offset", type=_nonnegative, default=0)
+    s.add_argument("--confidence", choices=["confirmed", "probable", "uncertain"])
 
     s = sub.add_parser("impact", aliases=["codebase_impact_analysis"],
                        help="symbols, tables, programs and pages touched by a git diff")
     s.add_argument("base", nargs="?", help="git revision or range (default: uncommitted work against HEAD)")
     s.add_argument("--full", action="store_true", help="list every changed symbol")
 
+    s = sub.add_parser("doctor", help="diagnose index coverage and excluded files")
+    s.add_argument("--path", help="explain why a specific file is excluded")
     sub.add_parser("stats", help="show index statistics")
     sub.add_parser("status", aliases=["codebase_index_status"], help="index health: freshness, failures, consistency")
     sub.add_parser("serve", help="run as MCP server over stdio (JSON-RPC)")
+    for parser in set(sub.choices.values()):
+        parser.add_argument("--root", default=argparse.SUPPRESS, help="project root")
+        parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="print JSON")
     return p
 
 
@@ -86,14 +111,14 @@ def main(argv: list[str] | None = None) -> int:
     _fix_stdio(serving=args.cmd == "serve")
     root = os.path.abspath(args.root)
 
-    if args.cmd == "serve":
-        from .mcp_server import serve
-        return serve(root)
-
     from .query import (render_context, render_data_access, render_impact, render_relations, render_search,
-                        render_status)
+                        render_status, render_doctor)
 
+    t = None
     try:
+        if args.cmd == "serve":
+            from .mcp_server import serve
+            return serve(root)
         t = _tools(root)
         if args.cmd == "index":
             st = t.refresh(force=args.force).as_dict()
@@ -101,13 +126,18 @@ def main(argv: list[str] | None = None) -> int:
                     f'-{st["deleted"]} (skipped {st["skipped"]}, failed {st["failed"]}); {st["symbols"]} symbols, {st["chunks"]} chunks')
             if st["warnings"]:
                 text += "\nwarnings:\n  " + "\n  ".join(st["warnings"][:20])
+            if not st['scanned']:
+                text += "\nNo indexable files. Run doctor to check the root, ignore rules and supported extensions."
+                st['hints'] = ["Run doctor to check the root, ignore rules and supported extensions."]
             _emit(st, text, args.json)
+            if st['failed'] or not st['scanned']:
+                return 3
         elif args.cmd in ("search", "codebase_semantic_search"):
             q = args.query_opt or args.query
             if not q:
                 print("error: a query is required", file=sys.stderr)
                 return 2
-            res = t.semantic_search(q, args.limit, args.related)
+            res = t.semantic_search(q, args.limit, args.related, args.file_pattern, args.language, args.offset)
             _emit(res, render_search(res), args.json)
         elif args.cmd in ("relations", "codebase_get_symbol_relations"):
             sym = args.symbol_opt or args.symbol
@@ -128,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             if not name:
                 print("error: an object name is required", file=sys.stderr)
                 return 2
-            res = t.data_access(name)
+            res = t.data_access(name, args.limit, args.offset, args.confidence)
             _emit(res, render_data_access(res, args.full), args.json)
         elif args.cmd in ("impact", "codebase_impact_analysis"):
             res = t.impact(args.base)
@@ -137,12 +167,18 @@ def main(argv: list[str] | None = None) -> int:
             res = t.index_status()
             _emit(res, render_status(res), args.json)
             return 0 if res["state"] in ("fresh", "stale") else 3
+        elif args.cmd == "doctor":
+            res = t.doctor(args.path)
+            _emit(res, render_doctor(res), args.json)
         elif args.cmd == "stats":
             st = t.stats()
             _emit(st, "\n".join(f"{k}: {v}" for k, v in st.items()), args.json)
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if t is not None:
+            t.indexer.close()
     return 0
 
 

@@ -42,7 +42,7 @@ local-codebase-indexer status                                       # is the ind
 ```
 
 - Without `--root` the current directory is used; `INDEXER_ROOT` also works.
-- Put `--json` before the subcommand to get JSON output.
+- Put `--json` before or after the subcommand to get JSON output.
 - `search`, `relations` and `context` run an incremental refresh first (mtime check, then md5 only when mtime changed).
 - The tool names from the spec also work as subcommands: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context` (options `--query`, `--symbol_name --relation_direction`, `--file_path --focus_lines --padding_lines`).
 
@@ -53,7 +53,28 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 # without installing: claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
-`serve` speaks JSON-RPC (MCP) over stdio and exposes six tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_impact_analysis`, `codebase_index_status`. A long-lived server re-checks the index before a query when the last check is older than 15 s (a no-op check takes about a second on a few thousand files). `codebase_get_data_access` returns a summary (5 entries per section, every program) unless `detail` is set; `codebase_semantic_search` lists dependency-graph neighbours only with `related`.
+`serve` speaks JSON-RPC (MCP) over stdio and exposes seven tools: `codebase_semantic_search`, `codebase_get_symbol_relations`, `codebase_get_optimized_context`, `codebase_get_data_access`, `codebase_impact_analysis`, `codebase_index_status`, `codebase_index_doctor`. A long-lived server re-checks the index before a query when the last check is older than 15 s (a no-op check takes about a second on a few thousand files). `codebase_get_data_access` returns a summary (5 entries per section, every program) unless `detail` is set; `codebase_semantic_search` lists dependency-graph neighbours only with `related`.
+
+## Diagnose missing code and control output
+
+```bash
+local-codebase-indexer --root <project> doctor
+local-codebase-indexer --root <project> doctor --path src/Service.cs
+local-codebase-indexer --root <project> search "retrieve invoice" --file '*.py' --language python --limit 5
+local-codebase-indexer --root <project> search "retrieve invoice" --file '*.py' --language python --limit 5 --offset 5
+local-codebase-indexer --root <project> data-access MES_Lot --confidence confirmed --limit 20 --offset 0
+local-codebase-indexer --root <project> data-access MES_Lot --full
+```
+
+`doctor` reports supported text files, ignore rules, excluded directories, unsupported extensions, files over 5 MB, binary files and index health. `--path` explains a specific file, including a parent directory that prevents indexing. Directory counts are counts of excluded directories, not all the files hidden inside them. Nested `.gitignore` negations override parent file patterns; an excluded parent directory must first be re-included, just as with Git. Built-in excluded directories such as `node_modules` remain excluded.
+
+Search filters apply **before** ranking. `--file` is a case-sensitive glob over the complete project-relative path (`*` also matches `/`); languages are `csharp`, `python`, `javascript`, `typescript`, `tsx`, and `text`. The JSON `pagination` object has `has_more` and `next_offset`; keep the same query and filters for subsequent pages. Pages assume the index remains unchanged. No-result responses suggest similar symbols where available and explain useful next steps. General verb paraphrases expand keyword/symbol matching without diluting vector queries; project-specific jargon still belongs in `.ai_context/synonyms.json`.
+
+Data-access `--confidence` selects an exact level (`confirmed`, `probable`, or `uncertain`). `--limit` and `--offset` apply independently to each section, including programs and procedure accesses. JSON includes `pagination.sections` with totals and next offsets. MCP accepts the same `limit`, `offset`, and `confidence` fields; search uses `file_pattern` and `language`. `--full` / MCP `detail=true` lists all entries when no explicit page size is supplied. The old 40-entry display and 200-entry query caps have been removed.
+
+`impact` includes both current symbols and affected symbols/accesses/callers from the base revision, so deleting a method or file remains visible. `snapshot: before` means its line numbers refer to the base revision, not the current file. The first request for a base revision builds a temporary historical index, which can take time on a large repository; a complete baseline is cached under `.ai_context/impact/` for reuse. Remove this directory to reclaim space. Historical analysis covers files in the Git archive; external `extra_roots` are not reconstructed. Static call-graph confidence and known language limitations still apply.
+
+A nonexistent `--root` is rejected without creating it. `index` returns exit status 3 for an empty or partially failed run; use `doctor` and `status` to diagnose it. Invalid MCP inputs return an error while keeping the server available for the next request.
 
 ## Three-layer index
 

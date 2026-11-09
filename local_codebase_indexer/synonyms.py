@@ -30,7 +30,7 @@ DEFAULT_GROUPS: list[list[str]] = [
     ["delete", "remove", "刪除", "删除", "移除"],
     ["save", "persist", "store", "儲存", "保存", "存檔"],
     ["login", "signin", "authenticate", "auth", "登入", "登录", "驗證", "验证", "認證"],
-    ["password", "pwd", "密碼", "密码"],
+    ["password", "pwd", "passphrase", "secret", "密碼", "密码"],
     ["user", "account", "使用者", "用戶", "用户", "帳號", "账号"],
     ["permission", "role", "權限", "权限", "角色"],
     ["config", "configuration", "settings", "設定", "配置", "组态"],
@@ -53,6 +53,19 @@ DEFAULT_GROUPS: list[list[str]] = [
     ["workorder", "工單", "工单"],
     ["equipment", "machine", "device", "設備", "机台", "機台", "设备"],
     ["status", "state", "狀態", "状态"],
+]
+
+# General paraphrases help keyword/symbol recall without diluting vector queries.
+GENERAL_GROUPS = [
+    ["read", "fetch", "retrieve", "load", "讀取", "读取", "取得", "載入", "加载"],
+    ["validate", "verify", "check", "檢核", "校驗", "校验"],
+    ["calculate", "compute", "計算", "计算"],
+    ["send", "transmit", "dispatch", "傳送", "发送", "發送"],
+    ["cancel", "abort", "取消", "中止"],
+    ["split", "divide", "partition", "separate", "分割", "拆分", "拆批"],
+    ["merge", "combine", "合併", "合并"],
+    ["serialize", "serialise", "marshal", "序列化"],
+    ["deserialize", "deserialise", "unmarshal", "反序列化"],
 ]
 
 _WORD = re.compile(r"[A-Za-z0-9_]+")
@@ -78,16 +91,17 @@ def _load_project(root: str | None) -> tuple[list[list[str]], set[str]]:
 class Expander:
     def __init__(self, root: str | None = None):
         extra, disabled = _load_project(root)
-        self.groups = [[w.lower() for w in g] for g in DEFAULT_GROUPS + extra]
+        self.embedding_groups = [[w.lower() for w in g] for g in DEFAULT_GROUPS + extra]
+        self.groups = self.embedding_groups + [[w.lower() for w in g] for g in GENERAL_GROUPS]
         self.disabled = disabled
 
-    def expand(self, query: str) -> list[str]:
+    def expand(self, query: str, for_embedding: bool = False) -> list[str]:
         """Extra terms (not in the query yet) for every synonym group the query triggers."""
         low = query.lower()
         words = set(_WORD.findall(low))
         words |= {w[:-1] for w in words if len(w) > 3 and w.endswith("s")}  # inserts -> insert
         extra: list[str] = []
-        for g in self.groups:
+        for g in (self.embedding_groups if for_embedding else self.groups):
             hit = [w for w in g if w not in self.disabled and
                    ((w in words) if w.isascii() else (w in low))]
             if not hit:

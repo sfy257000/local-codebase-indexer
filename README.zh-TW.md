@@ -38,7 +38,7 @@ local-codebase-indexer status                                       # 索引是�
 ```
 
 - 不給 `--root` 時使用目前目錄，也可用環境變數 `INDEXER_ROOT`。
-- 加 `--json`（放在子命令前）輸出 JSON。
+- 加 `--json`（可放在子命令前後）輸出 JSON。
 - `search`、`relations`、`context` 執行前會自動做一次增量更新（先比 mtime，mtime 變了才算 md5）。
 - 規格中的工具名稱也可直接當子命令：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`（參數 `--query`、`--symbol_name --relation_direction`、`--file_path --focus_lines --padding_lines`）。
 
@@ -49,7 +49,24 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 # 不安裝直接跑：claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
-`serve` 以 stdio 提供 JSON-RPC（MCP），暴露六個工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`。長駐的 server 在距離上次檢查超過 15 秒時，查詢前會重新檢查索引（幾千個檔案無變動約 1 秒）。`codebase_get_data_access` 預設回摘要（每區 5 筆、程式全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附相依檔案。
+`serve` 以 stdio 提供 JSON-RPC（MCP），暴露七個工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`、`codebase_index_doctor`。長駐的 server 在距離上次檢查超過 15 秒時，查詢前會重新檢查索引（幾千個檔案無變動約 1 秒）。`codebase_get_data_access` 預設回摘要（每區 5 筆、程式全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附相依檔案。
+
+## 診斷、篩選與分頁（0.6.0）
+
+```bash
+local-codebase-indexer --root <專案> doctor --path src/Service.cs
+local-codebase-indexer --root <專案> search "讀取發票" --file '*.py' --language python --limit 5 --offset 0
+local-codebase-indexer --root <專案> data-access MES_Lot --confidence confirmed --limit 20 --offset 20
+local-codebase-indexer --root <專案> data-access MES_Lot --full
+```
+
+- `doctor` 顯示索引範圍、忽略項目、不支援的副檔名、過大／二進位檔案與索引狀態；`--path` 可查單一檔案的排除原因。排除目錄的數量不代表其中的檔案數量。
+- 搜尋先套用檔案與語言篩選再排序。`--file` 是完整相對路徑的 glob，區分大小寫，`*` 可跨 `/`。JSON 的 `pagination.next_offset` 提供下一頁；翻頁時保留相同查詢與篩選，並避免在中途修改索引。
+- `data-access` 的 `--confidence` 精確選取 `confirmed`／`probable`／`uncertain`；分頁對每個區段各自套用，JSON 提供各區總數與下一個 offset。`--full`／MCP `detail=true` 不再受舊有 40／200 筆上限限制。
+- MCP 搜尋參數為 `file_pattern`、`language`、`limit`、`offset`；資料存取工具支援 `confidence`、`limit`、`offset`。新增 `codebase_index_doctor` 診斷工具。
+- `impact` 同時分析修改前後的程式，包含刪除項目及舊有呼叫／資料表影響；`snapshot=before` 的行號屬於基準版本。首次會建立歷史索引，之後重用 `.ai_context/impact/` 快取；此目錄可安全刪除以釋放空間。歷史分析不重建 Git 之外的 `extra_roots`，既有靜態分析限制仍適用。
+- 不存在的根目錄會報錯，不會自動建立；空索引或有失敗項目的 `index` 回傳結束碼 3。MCP 收到錯誤參數後仍可繼續處理下一個請求。
+- 擴充一般中英文動詞與密碼用語；專案術語仍建議放入 `.ai_context/synonyms.json`。這是詞彙搜尋改善，並不保證能理解所有自然語句。
 
 ## 三層索引
 

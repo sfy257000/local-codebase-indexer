@@ -38,7 +38,7 @@ local-codebase-indexer status                                       # 索引是�
 ```
 
 - 不指定 `--root` 时使用当前目录，也可用环境变量 `INDEXER_ROOT`。
-- 加 `--json`（放在子命令前）输出 JSON。
+- 加 `--json`（可放在子命令前后）输出 JSON。
 - `search`、`relations`、`context` 执行前会自动做一次增量更新（先比较 mtime，mtime 变了才计算 md5）。
 - 规格中的工具名称也可以直接作为子命令：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`（参数 `--query`、`--symbol_name --relation_direction`、`--file_path --focus_lines --padding_lines`）。
 
@@ -49,7 +49,20 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 # 不安装直接运行：claude mcp add local-indexer -- uvx local-codebase-indexer --root /path/to/project serve
 ```
 
-`serve` 通过 stdio 提供 JSON-RPC（MCP），暴露六个工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`。常驻的 server 在距离上次检查超过 15 秒时，查询前会重新检查索引（几千个文件无变动约 1 秒）。`codebase_get_data_access` 默认返回摘要（每区 5 条、程序全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附依赖文件。
+`serve` 通过 stdio 提供 JSON-RPC（MCP），暴露七个工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`、`codebase_index_doctor`。常驻的 server 在距离上次检查超过 15 秒时，查询前会重新检查索引（几千个文件无变动约 1 秒）。`codebase_get_data_access` 默认返回摘要（每区 5 条、程序全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附依赖文件。
+
+## 诊断、筛选与分页（0.6.0）
+
+```bash
+local-codebase-indexer --root <项目> doctor --path src/Service.cs
+local-codebase-indexer --root <项目> search "读取发票" --file '*.py' --language python --limit 5 --offset 0
+local-codebase-indexer --root <项目> data-access MES_Lot --confidence confirmed --limit 20 --offset 20
+local-codebase-indexer --root <项目> data-access MES_Lot --full
+```
+
+`doctor` 解释忽略规则、不支持的扩展名、过大和二进制文件以及索引状态。搜索先筛选再排名；文件 glob 区分大小写，`*` 可以跨 `/`。JSON 提供 `pagination.next_offset`。数据访问支持精确信心等级筛选和每个区段独立分页；`--full`／MCP `detail=true` 不再受旧有 40／200 条上限限制。MCP 搜索使用 `file_pattern`、`language`、`limit`、`offset`，数据访问使用 `confidence`、`limit`、`offset`，新增诊断工具 `codebase_index_doctor`。
+
+`impact` 保留删除代码及历史调用、数据表影响；`snapshot=before` 的行号属于基准版本。历史索引首次建立后缓存在 `.ai_context/impact/`，可安全删除以释放空间；不会重建外部 `extra_roots`，静态分析限制仍适用。不存在的根目录会报错，空索引或部分失败返回退出码 3；MCP 参数错误不会结束服务。新增常见中英文同义词，项目术语仍可配置在 `.ai_context/synonyms.json`。
 
 ## 三层索引
 

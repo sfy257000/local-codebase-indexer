@@ -11,5 +11,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev,onnx]"
-      - run: python -m pytest -q
+      - run: pip install -e ".[dev,onnx]" onnx
+      - run: python -c "import onnx, onnxruntime, tokenizers"
+      - run: python -m pytest -q -rs
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine && python -m build && python -m twine check dist/*
+      - name: Test installed wheel and source distribution
+        run: |
+          python -m venv "$RUNNER_TEMP/package-env"
+          "$RUNNER_TEMP/package-env/bin/pip" install "$GITHUB_WORKSPACE"/dist/*.whl pytest onnx onnxruntime tokenizers
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer --version
+          tar -xzf "$GITHUB_WORKSPACE"/dist/*.tar.gz
+          "$RUNNER_TEMP/package-env/bin/python" -m pytest -q "$RUNNER_TEMP"/local_codebase_indexer-*/tests

@@ -16,7 +16,6 @@ from collections import deque
 
 MAX_DEPTH = 4
 ENTRY_DEPTH = 8
-LIST_CAP = 200
 _METHOD_KINDS = ("method", "constructor", "function")
 SQL_OBJECT_KINDS = ("table", "procedure", "view", "function")
 _CONF = {"confirmed": 0, "probable": 1, "uncertain": 2}
@@ -168,8 +167,8 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
                     for d in _definitions(conn, r["target_key"]):
                         if d["type"] in ("procedure", "function", "view"):
                             queue.append((d["id"], chain + [r["target_name"]], depth + 1))
-    return {"reads": _sort(reads)[:LIST_CAP], "writes": _sort(writes)[:LIST_CAP],
-            "executes": _sort(execs)[:LIST_CAP], "dynamic_sql": _sort(dynamic)[:LIST_CAP]}
+    return {"reads": _sort(reads), "writes": _sort(writes),
+            "executes": _sort(execs), "dynamic_sql": _sort(dynamic)}
 
 
 def _program(sym: sqlite3.Row) -> str | None:
@@ -225,8 +224,9 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> tup
             queue.append((parent, access, depth + 1, pconf))
         if not parents and sym["symbol_type"] in _METHOD_KINDS:
             root = roots.setdefault(sid, {"symbol": sym["qualified_name"] or sym["symbol_name"],
-                                          "file_path": sym["file_path"], "line": sym["start_line"], "access": set()})
+                                          "file_path": sym["file_path"], "line": sym["start_line"], "access": set(), "confidence": conf})
             root["access"].add(access)
+            root['confidence'] = min(root['confidence'], conf, key=_CONF.__getitem__)
     out = []
     for p in sorted(progs.values(), key=lambda p: p["program"]):
         ids = sorted(p.pop("ids"))
@@ -269,11 +269,11 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
 
     result = {
         "object": object_name, "key": key, "found": True, "kind": kind, "definitions": defs,
-        "readers": pick("read")[:LIST_CAP],
-        "writers": pick("write")[:LIST_CAP],
-        "executed_by": pick("exec")[:LIST_CAP],
+        "readers": pick("read"),
+        "writers": pick("write"),
+        "executed_by": pick("exec"),
         "mapped_by": _sort([e for e in confirmed if e["access"] == "map"]),
-        "possible": _sort(possible)[:LIST_CAP],
+        "possible": _sort(possible),
         "programs": [],
         "no_known_caller": [],
         "notes": [],

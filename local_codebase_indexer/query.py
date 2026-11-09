@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import fnmatch
+import difflib
 import re
 import sqlite3
 import textwrap
@@ -14,8 +16,8 @@ import numpy as np
 from . import __version__, dataflow
 from . import db as dbmod
 from .callgraph import CONF_ORDER
-from .core import Indexer, cjk_bigrams, git, git_info
-from .scanner import extra_roots, iter_files
+from .core import Indexer, cjk_bigrams, git_info
+from .scanner import ScanReport, explain_path, extra_roots, iter_files
 from .embedder import split_identifier
 from .synonyms import Expander
 
@@ -85,8 +87,8 @@ def _has_word(term: str, text: str) -> bool:
 class CodebaseTools:
     """Facade exposing codebase_semantic_search / get_symbol_relations / get_optimized_context."""
 
-    def __init__(self, root: str, auto_refresh: bool = True, embedder=None):
-        self.indexer = Indexer(root, embedder=embedder)
+    def __init__(self, root: str, auto_refresh: bool = True, embedder=None, db_path: str | None = None):
+        self.indexer = Indexer(root, embedder=embedder, db_path=db_path)
         self.root = self.indexer.root
         self.conn: sqlite3.Connection = self.indexer.conn
         self.embedder = self.indexer.embedder
@@ -107,13 +109,35 @@ class CodebaseTools:
             self.refresh()
 
     # ------------------------------------------------------------------ Tool 1
-    def semantic_search(self, query: str, limit: int = 5, related: bool = False) -> dict:
+    def semantic_search(self, query: str, limit: int = 5, related: bool = False,
+                        file_pattern: str | None = None, language: str | None = None, offset: int = 0) -> dict:
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must be a nonempty string")
+        if offset < 0:
+            raise ValueError("offset must be nonnegative")
+        from .scanner import LANGUAGE_BY_EXT
+        if language is not None and language not in set(LANGUAGE_BY_EXT.values()):
+            raise ValueError("unsupported language; choose " + ", ".join(sorted(set(LANGUAGE_BY_EXT.values()))))
         self._ensure()
         limit = max(1, min(int(limit or 5), 50))
+        wanted = offset + limit + 1
+        scope = None
+        self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS search_scope (rowid INTEGER PRIMARY KEY)")
+        self.conn.execute("DELETE FROM search_scope")
+        if file_pattern or language:
+            scope = {r['rowid'] for r in self.conn.execute(
+                "SELECT c.rowid, c.file_path, f.language FROM chunk_metadata c JOIN files f ON f.file_path=c.file_path")
+                if (not file_pattern or fnmatch.fnmatchcase(r['file_path'], file_pattern))
+                and (not language or r['language'] == language)}
+            self.conn.executemany("INSERT INTO search_scope VALUES(?)", [(rid,) for rid in scope])
+        self.conn.commit()
+        scope_sql = " AND rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
+        chunk_scope = " AND c.rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
         # a typed identifier needs room for its whole scope (every chunk of WD0096*.cs), plain prose does not
-        pool = max(limit * 6, 100 if self._whole_identifiers(query) else 30)
-        extra = self.expander.expand(query)
-        extra += [w for w in self._mined_expansion(query) if w not in extra]
+        pool = max((offset + limit) * 6, 100 if self._whole_identifiers(query) else 30)
+        mined = self._mined_expansion(query)
+        extra = list(dict.fromkeys(self.expander.expand(query) + mined))
+        vector_extra = list(dict.fromkeys(self.expander.expand(query, for_embedding=True) + mined))
         terms = _query_terms(query)
         for t in _query_terms(" ".join(extra)):
             if t not in terms:
@@ -127,7 +151,7 @@ class CodebaseTools:
             match = " OR ".join('"' + t.replace('"', "") + '"' for t in terms)
             try:
                 rows = self.conn.execute(
-                    "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?",
+                    "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?" + scope_sql + " ORDER BY bm25(chunks_fts) LIMIT ?",
                     (match, pool),
                 ).fetchall()
                 ranked["keyword"] = [r[0] for r in rows]
@@ -142,13 +166,13 @@ class CodebaseTools:
                 for r in self.conn.execute(
                     "SELECT c.rowid, s.symbol_name, s.qualified_name FROM chunk_metadata c "
                     "JOIN symbols s ON s.id = c.symbol_id "
-                    "WHERE lower(s.symbol_name) LIKE ? OR lower(s.qualified_name) LIKE ? LIMIT 500",
-                    (like, like),
+                    "WHERE (lower(s.symbol_name) LIKE ? OR lower(s.qualified_name) LIKE ?)" + chunk_scope + " LIMIT ?",
+                    (like, like, max(500, pool)),
                 ):
                     if _has_word(t, r["symbol_name"]) or _has_word(t, r["qualified_name"] or ""):
                         scores[r[0]] += 1
                 for r in self.conn.execute(
-                    "SELECT rowid, file_path FROM chunk_metadata WHERE lower(file_path) LIKE ? LIMIT 300", (like,)
+                    "SELECT rowid, file_path FROM chunk_metadata WHERE lower(file_path) LIKE ?" + scope_sql + " LIMIT ?", (like, max(300, pool))
                 ):
                     if _has_word(t, r["file_path"]):
                         scores[r[0]] += 1
@@ -159,11 +183,11 @@ class CodebaseTools:
                 like = f"%{squashed}%"
                 for r in self.conn.execute(
                     "SELECT c.rowid FROM chunk_metadata c JOIN symbols s ON s.id = c.symbol_id "
-                    "WHERE replace(lower(s.symbol_name), '_', '') LIKE ? LIMIT 500", (like,)):
+                    "WHERE replace(lower(s.symbol_name), '_', '') LIKE ?" + chunk_scope + " LIMIT ?", (like, max(500, pool))):
                     scores[r[0]] += 3
                     exact_ids.add(r[0])
                 for r in self.conn.execute(
-                    "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ? LIMIT 300", (like,)):
+                    "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ?" + scope_sql + " LIMIT ?", (like, max(300, pool))):
                     scores[r[0]] += 2
                     exact_ids.add(r[0])  # in a file named after it (WD0096Service.cs: SetRecord)
             ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:pool]
@@ -175,11 +199,11 @@ class CodebaseTools:
             ranks_override["symbol"] = tie_rank
 
         # vector layer: cosine similarity over local embeddings
-        rows = self.conn.execute("SELECT rowid, chunk_embedding FROM vss_chunks").fetchall()
+        rows = self.conn.execute("SELECT rowid, chunk_embedding FROM vss_chunks WHERE 1=1" + scope_sql).fetchall()
         if rows:
             ids = np.fromiter((r[0] for r in rows), dtype=np.int64, count=len(rows))
             mat = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), -1)
-            qtext = query + " " + " ".join(extra) if extra else query
+            qtext = query + " " + " ".join(vector_extra) if vector_extra else query
             qv = (self.embedder.embed_query(qtext) if hasattr(self.embedder, "embed_query")
                   else self.embedder.embed([qtext])[0])
             if float(np.linalg.norm(qv)) > 0:
@@ -211,9 +235,11 @@ class CodebaseTools:
         results, seen_spans = [], set()
         routed, bare = self._route_data_access(query)
         routed_hits = []
-        for acc in routed[:limit]:
+        allowed_paths = {r[0] for r in self.conn.execute("SELECT file_path FROM files WHERE language=?", (language,))} if language else None
+        for acc in routed:
             hit = self._chunk_result(acc)
-            if hit is not None and (hit["file_path"], hit["start_line"], hit["end_line"]) not in seen_spans:
+            if hit is not None and (not file_pattern or fnmatch.fnmatchcase(hit["file_path"], file_pattern)) and (
+                    allowed_paths is None or hit['file_path'] in allowed_paths) and (hit["file_path"], hit["start_line"], hit["end_line"]) not in seen_spans:
                 seen_spans.add((hit["file_path"], hit["start_line"], hit["end_line"]))
                 routed_hits.append(hit)
         if bare and routed_hits and top_ids:
@@ -228,7 +254,7 @@ class CodebaseTools:
                 seen_spans.add(span)
         results.extend(routed_hits)
         for rid in top_ids:
-            if len(results) >= limit:
+            if len(results) >= wanted:
                 break
             row = self.conn.execute(
                 "SELECT c.file_path, c.start_line, c.end_line, c.raw_text, c.symbol_id, "
@@ -254,10 +280,23 @@ class CodebaseTools:
                 "matched_by": via[rid],
                 "snippet": "\n".join(snippet_lines[:12]) + ("\n..." if len(snippet_lines) > 12 else ""),
             })
-            if len(results) >= limit:
+            if len(results) >= wanted:
                 break
 
+        has_more = len(results) > offset + limit
+        results = results[offset:offset + limit]
+        hints = []
+        suggestions = []
+        if not results:
+            names = [r[0] for r in self.conn.execute("SELECT DISTINCT symbol_name FROM symbols")]
+            suggestions = difflib.get_close_matches(query, names, n=5, cutoff=0.45)
+            hints = ["Run doctor --path <file> to explain missing files.",
+                     "Try an identifier or fewer words; remove file/language filters to widen the search."]
         return {"query": query, "results": results,
+                "pagination": {"offset": offset, "limit": limit, "has_more": has_more,
+                               "next_offset": offset + limit if has_more else None},
+                "filters": {"file_pattern": file_pattern, "language": language},
+                "suggestions": suggestions, "hints": hints,
                 "related_files": self._related_files(results[:3]) if related else []}
 
     # ------------------------------------------------------------------ data access routing
@@ -347,9 +386,53 @@ class CodebaseTools:
             "snippet": "\n".join(snippet_lines[:12]) + ("\n..." if len(snippet_lines) > 12 else ""),
         }
 
-    def data_access(self, object_name: str) -> dict:
+    def data_access(self, object_name: str, limit: int | None = None, offset: int = 0,
+                    confidence: str | None = None) -> dict:
+        if offset < 0 or (limit is not None and limit < 1):
+            raise ValueError("limit must be positive and offset nonnegative")
+        if confidence is not None and confidence not in ('confirmed', 'probable', 'uncertain'):
+            raise ValueError("confidence must be confirmed, probable or uncertain")
         self._ensure()
-        return dataflow.data_access(self.conn, object_name)
+        res = dataflow.data_access(self.conn, object_name)
+        if not res['found']:
+            return res
+        sections = {}
+        groups = [(res, k, k) for k in ('readers', 'writers', 'executed_by', 'mapped_by', 'possible',
+                                        'programs', 'no_known_caller')]
+        groups += [(res['touches'], k, 'touches.' + k) for k in res.get('touches', {})]
+        for container, key, label in groups:
+            entries = container[key]
+            if confidence:
+                entries = [e for e in entries if e.get('confidence') == confidence]
+            total = len(entries)
+            page = entries[offset:None if limit is None else offset + limit]
+            container[key] = page
+            sections[label] = {'total': total, 'returned': len(page),
+                               'next_offset': offset + len(page) if offset + len(page) < total else None}
+        res['filters'] = {'confidence': confidence}
+        if limit is not None or offset:
+            res['pagination'] = {'offset': offset, 'limit': limit, 'confidence': confidence, 'sections': sections}
+        return res
+
+    def doctor(self, path: str | None = None) -> dict:
+        report = ScanReport()
+        binary = unreadable = 0
+        for sf in iter_files(self.root, report=report):
+            try:
+                with open(sf.abs_path, 'rb') as f:
+                    if b'\x00' in f.read(8192):
+                        binary += 1
+                        report.record(sf.rel_path, 'binary')
+            except OSError:
+                unreadable += 1
+                report.record(sf.rel_path, 'unreadable')
+        eligible = report.counts.get('eligible', 0) - binary - unreadable
+        return {'root': self.root, 'eligible_files': eligible, 'counts': report.counts,
+                'examples': report.examples, 'path': explain_path(self.root, path) if path else None,
+                'index': self.index_status(),
+                'hints': (["No indexable files: check --root, ignore rules, supported extensions and file sizes."]
+                          if not eligible else []),
+                'note': 'Excluded directory counts describe directories, not the number of files hidden within them.'}
 
     def _related_files(self, seeds: list[dict]) -> list[dict]:
         """Graph traversal: dependencies of / on the top seed files."""
@@ -600,63 +683,8 @@ class CodebaseTools:
 
     # ------------------------------------------------------------------ impact of a change
     def impact(self, base: str | None = None) -> dict:
-        """What a change touches: the symbols on changed lines, the tables they access themselves, and the
-        programs / pages / caller-less entry points that reach them. ``base`` is any git revision or range
-        (``main``, ``HEAD~3``, ``origin/main...HEAD``); without it, uncommitted work (staged, unstaged and
-        untracked files) against HEAD."""
-        if base is not None and (not base.strip() or base.startswith("-")):
-            raise ValueError("base must be a git revision or range")
-        if self.auto_refresh:
-            self.refresh()  # line numbers must match the files on disk, so no recheck throttle here
-        diff = git(self.root, "diff", "--unified=0", "--no-color", "--no-ext-diff", "--relative",
-                   base or "HEAD", timeout=60)
-        if diff is None:
-            raise ValueError(f"git diff failed for {base or 'HEAD'} (not a git repository, or unknown revision)")
-        ranges: dict[str, list[tuple[int, int]]] = defaultdict(list)
-        current = None
-        for line in diff.splitlines():
-            if line.startswith("+++ "):
-                current = line[6:] if line.startswith("+++ b/") else None  # None: deleted file
-            elif line.startswith("@@") and current:
-                m = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
-                if m:
-                    start, count = int(m.group(1)), int(m.group(2) or 1)
-                    ranges[current].append((start, start + max(count, 1) - 1))
-        if base is None:
-            for p in (git(self.root, "ls-files", "--others", "--exclude-standard") or "").splitlines():
-                ranges[p].append((1, 10 ** 9))
-        changed: dict[str, dict] = {}
-        unmapped = []
-        for path, spans in sorted(ranges.items()):
-            hit = False
-            for a, b in spans:
-                rows = self.conn.execute(
-                    "SELECT id, symbol_type, qualified_name, symbol_name, file_path, start_line, end_line FROM symbols "
-                    "WHERE file_path=? AND start_line<=? AND end_line>=? AND symbol_type NOT IN ('namespace') "
-                    "ORDER BY (end_line - start_line)", (path, b, a)).fetchall()
-                leaves = [r for r in rows if r["symbol_type"] not in _TYPE_KINDS] or rows[:1]
-                for r in leaves if b - a >= 10 ** 8 else leaves[:1]:
-                    hit = True
-                    c = changed.setdefault(r["id"], {"id": r["id"], "symbol": r["qualified_name"] or r["symbol_name"],
-                                                     "type": r["symbol_type"], "file_path": r["file_path"],
-                                                     "lines": []})
-                    c["lines"].append([max(a, r["start_line"]), min(b, r["end_line"])])
-            if not hit:
-                unmapped.append(path)
-        ids = list(changed)
-        own = []
-        for i in range(0, len(ids), 500):
-            chunk = ids[i:i + 500]
-            own += [{"source": changed[r["source_id"]]["symbol"], "target": r["target_name"], "access": r["access"],
-                     "op": r["op"], "confidence": r["confidence"], "file_path": r["file_path"], "line": r["line"]}
-                    for r in self.conn.execute(
-                        f"SELECT * FROM data_access WHERE source_id IN ({','.join('?' * len(chunk))}) "
-                        f"AND via != 'ef_raw' ORDER BY target_name, line", chunk)]
-        entries = [{"source_id": c["id"], "source_type": "method" if c["type"] in self._METHOD_KINDS else c["type"],
-                    "access": "change", "confidence": "confirmed"} for c in changed.values()]
-        programs, no_caller = dataflow._programs(self.conn, dataflow._Lookup(self.conn), entries)
-        return {"base": base or "HEAD (uncommitted)", "changed": list(changed.values()), "unmapped_files": unmapped,
-                "tables": own, "programs": programs, "no_known_caller": no_caller}
+        from .impact import analyze_impact
+        return analyze_impact(self, base)
 
     # ------------------------------------------------------------------ Tool 4
     def index_status(self) -> dict:
@@ -769,6 +797,9 @@ def render_search(res: dict) -> str:
     out = [f'Search: "{res["query"]}"  ({len(res["results"])} results)']
     if not res["results"]:
         out.append("No matches.")
+        if res.get('suggestions'):
+            out.append("Similar symbols: " + ", ".join(res['suggestions']))
+        out.extend(res.get('hints', []))
     for i, r in enumerate(res["results"], 1):
         head = f'[{i}] {r["file_path"]}:{r["start_line"]}-{r["end_line"]}'
         if r["symbol"]:
@@ -782,6 +813,9 @@ def render_search(res: dict) -> str:
             out.append(f'    data access: {da["access"]}/{da["op"]} {da["target"]} '
                        f'[{da["confidence"]}, {da["via"]}] line {da["line"]}{chain}')
         out.extend("    " + ln for ln in r["snippet"].split("\n"))
+    page = res.get('pagination', {})
+    if page.get('has_more'):
+        out.append(f"More results: --offset {page['next_offset']} (MCP: offset={page['next_offset']})")
     if res["related_files"]:
         out.append("Related files (dependency graph):")
         for rf in res["related_files"]:
@@ -849,7 +883,7 @@ def _more(n: int, shown: int, full: bool) -> str:
 
 
 def render_data_access(res: dict, full: bool = False) -> str:
-    """Summary by default (5 entries per section, every program); ``full`` lists up to 40 per section."""
+    """Five entries per section by default; full and paginated output never silently truncate."""
     if not res["found"]:
         msg = f'No table or procedure named "{res["object"]}" found.'
         if res.get("suggestions"):
@@ -860,7 +894,9 @@ def render_data_access(res: dict, full: bool = False) -> str:
         out.append(f'  defined in {d["file_path"]}:{d["line"]}')
     sections = [("WRITTEN BY", "writers"), ("READ BY", "readers"), ("EXECUTED BY", "executed_by"),
                 ("MAPPED BY (EF)", "mapped_by")]
-    cap = 40 if full else 5
+    cap = max([len(res.get(k, [])) for k in ('writers', 'readers', 'executed_by', 'mapped_by',
+                                                      'possible', 'no_known_caller')]
+                  + [len(v) for v in res.get('touches', {}).values()] + [5]) if full or res.get("pagination") else 5
     for title, key in sections:
         items = res[key]
         if items:
@@ -870,11 +906,11 @@ def render_data_access(res: dict, full: bool = False) -> str:
                 out.append(_more(len(items), cap, full))
     if res.get("programs"):
         out.append(f'  USED BY PROGRAMS ({len(res["programs"])})')
-        for p in res["programs"][:60]:
+        for p in res["programs"]:
             out.append(f'    [{p["confidence"]}] {p["program"]}  {"/".join(p["access"])}  {p["file_path"]}  '
-                       f'({", ".join(p["actions"][:6])}{", ..." if len(p["actions"]) > 6 else ""})')
+                       f'({", ".join(p["actions"] if full or res.get("pagination") else p["actions"][:6])}{", ... (use --full)" if len(p["actions"]) > 6 and not full and not res.get("pagination") else ""})')
             if p.get("pages"):
-                out.append(f'        pages: {", ".join(p["pages"][:5])}{" ..." if len(p["pages"]) > 5 else ""}')
+                out.append(f'        pages: {", ".join(p["pages"] if full or res.get("pagination") else p["pages"][:5])}{" ... (use --full)" if len(p["pages"]) > 5 and not full and not res.get("pagination") else ""}')
     roots = res.get("no_known_caller") or []
     if roots:
         out.append(f"  NO KNOWN CALLER - entry points (API, jobs, Main) or unresolved calls ({len(roots)})")
@@ -889,31 +925,47 @@ def render_data_access(res: dict, full: bool = False) -> str:
                 for e in t[key][:cap]:
                     chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
                     out.append(f'    [{e["confidence"]}] {e["target"]}  {e["file_path"]}:{e["line"]}  {e["op"]}{chain}')
+                if len(t[key]) > cap:
+                    out.append(_more(len(t[key]), cap, full))
         if t["dynamic_sql"]:
             out.append(f'  DYNAMIC SQL inside ({len(t["dynamic_sql"])}) - targets cannot be determined')
-            for e in t["dynamic_sql"][:cap // 4 + 1]:
+            for e in t["dynamic_sql"][:(cap if full or res.get("pagination") else cap // 4 + 1)]:
                 out.append(f'    {e["file_path"]}:{e["line"]}  {e["evidence"][:100]}')
+            if not full and not res.get('pagination') and len(t['dynamic_sql']) > cap // 4 + 1:
+                out.append(_more(len(t['dynamic_sql']), cap // 4 + 1, False))
     if res["possible"]:
         out.append(f'  POSSIBLE (uncertain: dynamic SQL, EF SaveChanges on tracked entities) ({len(res["possible"])})')
-        out.extend(_da_line(e) for e in res["possible"][:cap // 2 or 1])
-    if not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
+        out.extend(_da_line(e) for e in res["possible"][:(cap if full or res.get("pagination") else cap // 2 or 1)])
+    if not res.get('pagination') and not res['possible'] and not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
         out.append("  no recorded access")
+    page = res.get('pagination')
+    if page:
+        for section, info in page['sections'].items():
+            out.append(f"  {section}: {info['returned']} returned / {info['total']} total")
+            if info['next_offset'] is not None:
+                out.append(f"    more: --offset {info['next_offset']} --limit {page['limit']} (MCP: offset={info['next_offset']})")
+    if res['possible'] and not full and not page and len(res['possible']) > (cap // 2 or 1):
+        out.append(_more(len(res['possible']), cap // 2 or 1, False))
     for n in res.get("notes", []) if full else []:
         out.append(f"note: {n}")
     return "\n".join(out)
 
 
 def render_impact(res: dict, full: bool = False) -> str:
-    cap = 200 if full else 15
+    cap = max(len(res['changed']), len(res['tables']), len(res['no_known_caller']), 15) if full else 15
     out = [f'Impact of changes since {res["base"]}: {len(res["changed"])} changed symbols']
     for c in res["changed"][:cap]:
-        lines = ", ".join(f"{a}-{b}" if a != b else str(a) for a, b in c["lines"][:4])
-        out.append(f'  {c["type"]} {c["symbol"]}  {c["file_path"]}:{lines}')
+        lines = ", ".join(f"{a}-{b}" if a != b else str(a) for a, b in (c["lines"] if full else c["lines"][:4]))
+        out.append(f'  {c["type"]} {c["symbol"]}  {c["file_path"]}:{lines} [{c.get("snapshot", "current")}]')
     if len(res["changed"]) > cap:
         out.append(_more(len(res["changed"]), cap, full))
+    if res.get('removed_files'):
+        out.append('  removed files: ' + ', '.join(res['removed_files']))
+    if res.get('note'):
+        out.append('  ' + res['note'])
     if res["unmapped_files"]:
-        out.append(f'  changed outside any symbol: {", ".join(res["unmapped_files"][:10])}'
-                   + (" ..." if len(res["unmapped_files"]) > 10 else ""))
+        out.append(f'  changed outside any symbol: {", ".join(res["unmapped_files"] if full else res["unmapped_files"][:10])}'
+                   + (" ... (use --full)" if len(res["unmapped_files"]) > 10 and not full else ""))
     if res["tables"]:
         tables: dict[str, set[str]] = defaultdict(set)
         names: dict[str, str] = {}
@@ -928,10 +980,10 @@ def render_impact(res: dict, full: bool = False) -> str:
             out.append(f'    [{p["confidence"]}] {p["program"]}  {p["file_path"]}  ({", ".join(p["actions"][:6])}'
                        f'{", ..." if len(p["actions"]) > 6 else ""})')
             if p.get("pages"):
-                out.append(f'        pages: {", ".join(p["pages"][:5])}{" ..." if len(p["pages"]) > 5 else ""}')
+                out.append(f'        pages: {", ".join(p["pages"] if full or res.get("pagination") else p["pages"][:5])}{" ... (use --full)" if len(p["pages"]) > 5 and not full and not res.get("pagination") else ""}')
     if res["no_known_caller"]:
         out.append(f'  NO KNOWN CALLER ({len(res["no_known_caller"])})')
-        out.extend(f'    {r["symbol"]}  {r["file_path"]}:{r["line"]}' for r in res["no_known_caller"][:cap])
+        out.extend(f'    {r["symbol"]}  {r["file_path"]}:{r["line"]} [{r.get("snapshot", "current")}]' for r in res["no_known_caller"][:cap])
     if not res["changed"] and not res["unmapped_files"]:
         out.append("  no changes")
     return "\n".join(out)
@@ -984,3 +1036,16 @@ def render_context(res: dict) -> str:
             f'{s["type"]} {s["symbol"]} ({s["start_line"]}-{s["end_line"]})' for s in res["enclosing_symbols"])
     tail = "\n[truncated: output limit reached; request fewer or narrower ranges]" if res["truncated"] else ""
     return head + "\n" + res["context"] + tail
+
+
+def render_doctor(res: dict) -> str:
+    out = [f"Project: {res['root']}", f"Indexable text files: {res['eligible_files']}",
+           f"Index state: {res['index']['state']}"]
+    for reason, count in sorted(res['counts'].items()):
+        out.append(f"  {reason}: {count}")
+        out.extend('    ' + path for path in res['examples'][reason][:3])
+    if res['path']:
+        out.append(f"{res['path']['path']}: {res['path']['reason']}")
+    out.extend(res['hints'])
+    out.append(res['note'])
+    return '\n'.join(out)

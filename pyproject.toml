@@ -33,7 +33,7 @@ dependencies = [
     "tree-sitter-javascript",
     "tree-sitter-typescript",
     "numpy",
-    "pathspec",
+    "pathspec>=0.12.1",
 ]
 
 [project.optional-dependencies]

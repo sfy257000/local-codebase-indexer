@@ -123,6 +123,8 @@ class IndexStats:
 class Indexer:
     def __init__(self, root: str, db_path: str | None = None, embedder=None):
         self.root = os.path.abspath(root)
+        if not os.path.isdir(self.root):
+            raise ValueError(f"project root is not an existing directory: {self.root}")
         self.db_path = db_path or dbmod.default_db_path(self.root)
         self.conn = dbmod.connect(self.db_path)
         self.embedder = embedder or get_embedder()

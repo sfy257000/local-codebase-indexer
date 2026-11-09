@@ -1,7 +1,9 @@
-include server.json .claude-plugin plugins README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
+include server.json CHANGELOG.md README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
 graft tests
 graft plugins
 graft .claude-plugin
 graft benchmarks
 prune benchmarks/__pycache__
 global-exclude __pycache__ *.pyc
+prune benchmarks/corpus/.ai_context
+include bin/indexer

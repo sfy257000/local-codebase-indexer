@@ -17,11 +17,12 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 | ANN index | Exact search is not the bottleneck. Measured (Python stdlib copies, linear growth): 17k chunks cold CLI search 0.35 s / warm 0.13 s / index 10 s; 52k chunks 0.75 s / 0.36 s / 28 s; 104k chunks 1.09 s / 0.73 s / 54 s, 372 MB RSS, 729 MB database. At 104k chunks the cosine product plus top-k takes about 12 ms; loading the vectors out of SQLite (fetch 0.31 s, join 0.12 s) is about half of a warm query | Exact cosine itself becomes slow, which is far beyond 1M chunks |
 | Vector matrix cache | Cheap and measurable: it removes about half of a warm query at 104k chunks (about 0.8 s -> 0.3 s). Not needed below ~50k chunks | A real project passes ~50k chunks. Keep the matrix in the MCP server process, and/or store it as a memory-mapped `.npy` next to the database so the CLI benefits too (invalidate on any index change) |
 | `codebase_trace_execution` | Needs reliable call / data-flow relations; today's usage edges are name matches | Call graph gaps (item 3) are narrowed; today edges carry a confidence level |
-| `codebase_impact_analysis` | Same dependency; must separate confirmed from guessed edges | Call graph gaps (item 3) are narrowed; today edges carry a confidence level |
 | `codebase_architecture_overview` | Low value for the intended use cases | A concrete need appears |
 | `codebase_find_references` (upgrade) | `relations` already returns name-matched references | Done in part: `relations` already separates confirmed / probable / candidate callers |
 
 ## Done
+
+- 0.6.0: complete before/after impact analysis with cached historical indexes; resilient MCP input validation; nested ignore negations; root validation; doctor diagnostics; bounded and filtered search; confidence-filtered data-access pagination with no hidden full-output caps; general paraphrases; mandatory ONNX dependencies in CI. See CHANGELOG.md for validation and limitations.
 
 - 0.5.0: a long-lived MCP server re-checks the index (was: once per process); full build 155 s -> 36 s on 2.3k files (C# usings no longer scanned as Python modules, per-file savepoints with batched commits); Chinese comment <-> identifier dictionary mined per project (iWAP paraphrase MRR 0.57 -> 0.64); data-access summary by default (`detail` / `--full`), related files only on request; EF confidence from the context variable's type; NO KNOWN CALLER roots; `impact` tool for a git diff; status shows the running version and warns when the code changed after start
 
