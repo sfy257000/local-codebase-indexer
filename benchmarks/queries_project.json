@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "description": "Curated navigation smoke questions about this repository's actual implementation. These are not collected user queries or an independent quality benchmark. Replace them with real questions from your own workflow.",
+  "queries": [
+    {"id":"source-encoding","query":"Which function decodes source bytes using UTF-8, Big5 and cp1252?","language":"python","relevant":[{"file":"local_codebase_indexer/core.py","symbol":"decode_bytes"}]},
+    {"id":"extension-language","query":"Map a file extension to its parser language","language":"python","relevant":[{"file":"local_codebase_indexer/scanner.py","symbol":"language_for"}]},
+    {"id":"excluded-file","query":"Explain why a path is excluded by ignore rules or its parent directory","language":"python","relevant":[{"file":"local_codebase_indexer/scanner.py","symbol":"explain_path"}]},
+    {"id":"mcp-validation","query":"Validate MCP arguments against their schema types and required properties","language":"python","relevant":[{"file":"local_codebase_indexer/mcp_server.py","symbol":"_validate"}]},
+    {"id":"writer-coordination","query":"Acquire a process lock with a bounded timeout for an index database","language":"python","relevant":[{"file":"local_codebase_indexer/locking.py","symbol":"index_lock"}]},
+    {"id":"rank-fusion","query":"Fuse keyword symbol and vector ranks using reciprocal rank fusion","language":"python","relevant":[{"file":"local_codebase_indexer/query.py","symbol":"semantic_search"}]},
+    {"id":"sql-access","query":"Extract SQL reads writes and procedure executions from T-SQL text","language":"python","relevant":[{"file":"local_codebase_indexer/sqlaccess.py","symbol":"extract_sql_accesses"}]},
+    {"id":"historical-index","query":"Cache the historical index of a Git revision for impact analysis","language":"python","relevant":[{"file":"local_codebase_indexer/impact.py","symbol":"_historical"}]},
+    {"id":"transformer-pooling","query":"Apply mean or CLS pooling and normalize ONNX transformer embeddings","language":"python","relevant":[{"file":"local_codebase_indexer/embedder.py","symbol":"OnnxEmbedder.embed"}]},
+    {"id":"gold-validation","query":"Validate evaluation questions and reject empty relevant answers or duplicate IDs","language":"python","relevant":[{"file":"local_codebase_indexer/evaluation.py","symbol":"validate_dataset"}]},
+    {"id":"identifier-subwords","query":"Split camelCase and snake_case identifiers into lowercase words","language":"python","relevant":[{"file":"local_codebase_indexer/embedder.py","symbol":"split_identifier"}]},
+    {"id":"dictionary-reload","query":"Reload changed project synonym configuration using a content fingerprint","language":"python","relevant":[{"file":"local_codebase_indexer/synonyms.py","symbol":"Expander.reload"}]},
+    {"id":"index-location","query":"Choose the default SQLite database path inside the project index directory","language":"python","relevant":[{"file":"local_codebase_indexer/db.py","symbol":"default_db_path"}]},
+    {"id":"schema-upgrade","query":"Migrate older SQLite symbol tables by adding missing columns","language":"python","relevant":[{"file":"local_codebase_indexer/db.py","symbol":"_migrate"}]},
+    {"id":"release-conflict","query":"Upload missing GitHub release assets while refusing to overwrite different checksums","language":"python","relevant":[{"file":"scripts/release_assets.py","symbol":"upload_assets"}]}
+  ]
+}

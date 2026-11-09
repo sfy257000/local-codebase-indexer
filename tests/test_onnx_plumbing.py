@@ -101,3 +101,56 @@ def test_cls_pooling_prefix_and_bad_pooling(model_dir, monkeypatch):
     monkeypatch.setenv("INDEXER_ONNX_POOLING", "max")
     with pytest.raises(ValueError):
         OnnxEmbedder(model_dir)
+
+
+def test_model_content_and_tokenizer_identity_trigger_rebuild(model_dir, tmp_path):
+    import shutil
+    from onnx import numpy_helper
+    first = tmp_path / 'one' / 'model'
+    second = tmp_path / 'two' / 'model'
+    for dest in (first, second):
+        dest.mkdir(parents=True)
+        for name in ('model.onnx', 'tokenizer.json'):
+            shutil.copyfile(os.path.join(model_dir, name), dest / name)
+    model = onnx.load(str(second / 'model.onnx'))
+    weights = numpy_helper.to_array(model.graph.initializer[0]).copy()
+    model.graph.initializer[0].CopyFrom(numpy_helper.from_array(-weights, 'table'))
+    onnx.save(model, str(second / 'model.onnx'))
+    a, b = OnnxEmbedder(str(first)), OnnxEmbedder(str(second))
+    assert a.name != b.name and not np.allclose(a.embed(['lot']), b.embed(['lot']))
+    project = tmp_path / 'source'; project.mkdir()
+    (project / 'service.py').write_text('def update_lot():\n    return 1\n')
+    t = CodebaseTools(str(project), embedder=a)
+    t.refresh()
+    previous = t.conn.execute('SELECT chunk_embedding FROM vss_chunks').fetchone()[0]
+    t.indexer.close()
+    t = CodebaseTools(str(project), embedder=b)
+    try:
+        stats = t.refresh()
+        assert stats.added == stats.scanned == 1
+        assert t.conn.execute('SELECT chunk_embedding FROM vss_chunks').fetchone()[0] != previous
+    finally:
+        t.indexer.close()
+    # Tokenizer changes also invalidate identity even if the model bytes are unchanged.
+    content = (second / 'tokenizer.json').read_text()
+    (second / 'tokenizer.json').write_text(content + '\n')
+    assert OnnxEmbedder(str(second)).name != b.name
+
+
+def test_external_onnx_weights_are_part_of_identity(model_dir, tmp_path):
+    import shutil
+    dest = tmp_path / 'external-model'; dest.mkdir()
+    shutil.copyfile(os.path.join(model_dir, 'tokenizer.json'), dest / 'tokenizer.json')
+    model = onnx.load(os.path.join(model_dir, 'model.onnx'))
+    onnx.save_model(model, str(dest / 'model.onnx'), save_as_external_data=True,
+                    all_tensors_to_one_file=True, location='weights.data', size_threshold=0)
+    before = OnnxEmbedder(str(dest))
+    previous = before.embed(['lot']).copy()
+    path = dest / 'weights.data'
+    values = np.frombuffer(path.read_bytes(), dtype=np.float32).copy()
+    path.write_bytes((-values).tobytes())
+    after = OnnxEmbedder(str(dest))
+    assert before.name != after.name
+    with pytest.raises(ValueError, match='changed while loaded'):
+        before.embed(['lot'])
+    assert not np.allclose(previous, after.embed(['lot']))

@@ -2,10 +2,16 @@ name: tests
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"
     strategy:
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,3 +36,18 @@ jobs:
           "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer --version
           tar -xzf "$GITHUB_WORKSPACE"/dist/*.tar.gz
           "$RUNNER_TEMP/package-env/bin/python" -m pytest -q "$RUNNER_TEMP"/local_codebase_indexer-*/tests
+  project-evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Evaluate curated repository navigation questions
+        run: local-codebase-indexer --root . evaluate --queries benchmarks/queries_project.json --save .ai_context/project-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-evaluation
+          path: .ai_context/project-report.json
+          if-no-files-found: error

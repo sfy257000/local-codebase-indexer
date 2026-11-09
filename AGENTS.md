@@ -64,3 +64,12 @@ The package is `local_codebase_indexer/`. See `README.md` for design notes and k
 - `data-access <table> --confidence confirmed --limit 20 --offset 20` pages each section independently. JSON has section totals and next offsets; `--full` really lists every entry.
 - `impact` includes historical accesses and callers for removed code. `snapshot=before` line numbers refer to the base revision. Historical indexes are cached in `.ai_context/impact/`; deleting that cache is safe.
 - A missing root is an error; an empty or failed indexing run returns exit status 3. `--json` and `--root` work before or after the subcommand.
+
+## Development improvements (0.7.0)
+
+- Prefer `search <query> --cursor <pagination.next_cursor>` for subsequent pages; retain query/filters. Cursor errors require a new search. `--explain` / MCP `explain=true` adds matched terms, expansion sources, layer ranks and SQL evidence.
+- `evaluate --queries .ai_context/eval.json --save .ai_context/report.json` measures your own verified navigation questions. Optional recall/latency/token budgets fail with exit status 3. Do not change gold answers or lower thresholds merely to make a run pass.
+- Exit status 4 means the index is busy; retry after the other process finishes. Configure `INDEXER_LOCK_TIMEOUT` and `INDEXER_BUSY_TIMEOUT` only when needed. Do not delete active lock files.
+- `impact A..B` and `A...B` use both Git snapshots and label target lines `after`; a single base revision compares with the working tree.
+- Context clipping keeps focus lines. Synonym configuration hot-reloads. ONNX identities include model/tokenizer/configuration fingerprints.
+- Future Release events validate and build once, then use the same files for PyPI and GitHub attachments. Validate locally with `python scripts/release_assets.py --tag v<package-version> --dist <directory>`; add `--upload` only when publishing was requested.

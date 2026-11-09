@@ -22,6 +22,8 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 
 ## Done
 
+- 0.7.0: revision-bound search cursors; historical target snapshots; model content identities; process coordination and crash recovery; focus-preserving context; synonym hot reload; retrieval explanations; project evaluation runner; automatic validated Release assets. Representative user-authored evaluation questions and broader semantic retrieval remain ongoing work.
+
 - 0.6.0: complete before/after impact analysis with cached historical indexes; resilient MCP input validation; nested ignore negations; root validation; doctor diagnostics; bounded and filtered search; confidence-filtered data-access pagination with no hidden full-output caps; general paraphrases; mandatory ONNX dependencies in CI. See CHANGELOG.md for validation and limitations.
 
 - 0.5.0: a long-lived MCP server re-checks the index (was: once per process); full build 155 s -> 36 s on 2.3k files (C# usings no longer scanned as Python modules, per-file savepoints with batched commits); Chinese comment <-> identifier dictionary mined per project (iWAP paraphrase MRR 0.57 -> 0.64); data-access summary by default (`detail` / `--full`), related files only on request; EF confidence from the context variable's type; NO KNOWN CALLER roots; `impact` tool for a git diff; status shows the running version and warns when the code changed after start
