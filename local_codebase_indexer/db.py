@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import contextmanager
+
+from .locking import IndexBusyError, index_lock, is_busy, timeout_seconds
 
 INDEX_DIR_NAME = ".ai_context"
 DB_NAME = "indexer.db"
@@ -166,13 +169,37 @@ def connect(db_path: str) -> sqlite3.Connection:
     if not os.path.exists(gi):
         with open(gi, "w", encoding="utf-8") as f:
             f.write("*\n")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.executescript(SCHEMA)
-    _migrate(conn)
-    return conn
+    with index_lock(db_path):
+        conn = sqlite3.connect(db_path, timeout=timeout_seconds('INDEXER_BUSY_TIMEOUT', 5.0))
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+        except sqlite3.OperationalError as exc:
+            conn.close()
+            if is_busy(exc):
+                raise IndexBusyError('Index database is busy. Retry shortly; INDEXER_BUSY_TIMEOUT controls the SQLite wait.') from exc
+            raise
+        return conn
+
+
+@contextmanager
+def read_snapshot(conn: sqlite3.Connection, db_path: str):
+    with index_lock(db_path, shared=True):
+        own = not conn.in_transaction
+        if own:
+            conn.execute('BEGIN')
+        try:
+            yield
+        except BaseException:
+            if own:
+                conn.rollback()
+            raise
+        else:
+            if own:
+                conn.commit()
 
 
 def _migrate(conn: sqlite3.Connection) -> None:

@@ -14,6 +14,7 @@ from collections import defaultdict
 from . import __version__, dataflow
 from . import db as dbmod
 from .core import git
+from .locking import index_lock
 from .embedder import HashingEmbedder
 
 _TYPES = {'class', 'interface', 'struct', 'record', 'enum', 'type', 'namespace'}
@@ -28,6 +29,11 @@ def _path(header: str) -> str | None:
 
 
 def _collect(tools, ranges: dict, snapshot: str) -> dict:
+    with dbmod.read_snapshot(tools.conn, tools.indexer.db_path):
+        return _collect_unlocked(tools, ranges, snapshot)
+
+
+def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
     changed, unmapped = {}, []
     for path, spans in sorted(ranges.items()):
         hit = False
@@ -63,14 +69,14 @@ def _collect(tools, ranges: dict, snapshot: str) -> dict:
             'programs': programs, 'no_known_caller': roots}
 
 
-def _historical(tools, revision: str, ranges: dict) -> dict:
+def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "before") -> dict:
     from .query import CodebaseTools
     cache = os.path.join(tools.root, '.ai_context', 'impact', f'{revision}-{dbmod.INDEX_VERSION}-{__version__}.db')
     if os.path.isfile(cache):
         old = CodebaseTools(tools.root, auto_refresh=False, embedder=HashingEmbedder(), db_path=cache)
         try:
-            if dbmod.get_meta(old.conn, 'last_indexed_at'):
-                return _collect(old, ranges, 'before')
+            if dbmod.get_meta(old.conn, 'last_indexed_at') and dbmod.get_meta(old.conn, 'indexing') != '1':
+                return _collect(old, ranges, snapshot_label)
         finally:
             old.indexer.close()
     with tempfile.TemporaryDirectory(prefix='indexer-impact-') as tmp:
@@ -100,7 +106,7 @@ def _historical(tools, revision: str, ranges: dict) -> dict:
             stats = old.refresh()
             if stats.failed:
                 raise ValueError('base revision could not be indexed completely: ' + '; '.join(stats.warnings[:3]))
-            result = _collect(old, ranges, 'before')
+            result = _collect(old, ranges, snapshot_label)
             os.makedirs(os.path.dirname(cache), exist_ok=True)
             # Publish only a complete baseline; readers never observe a partial build.
             with tempfile.NamedTemporaryFile(dir=os.path.dirname(cache), suffix='.db', delete=False) as out:
@@ -111,7 +117,10 @@ def _historical(tools, revision: str, ranges: dict) -> dict:
                     old.conn.backup(dest)
                 finally:
                     dest.close()
-                os.replace(completed, cache)
+                with index_lock(cache):
+                    # Immutable cache entries must not be replaced while another reader uses WAL sidecars.
+                    if not os.path.exists(cache):
+                        os.replace(completed, cache)
             finally:
                 if os.path.exists(completed):
                     os.unlink(completed)
@@ -123,12 +132,35 @@ def _historical(tools, revision: str, ranges: dict) -> dict:
 def analyze_impact(tools, base: str | None) -> dict:
     if base is not None and (not base.strip() or base.startswith('-')):
         raise ValueError('base must be a git revision or range')
-    if tools.auto_refresh:
-        tools.refresh()
+    def resolve(ref):
+        revision = git(tools.root, 'rev-parse', '--verify', (ref or 'HEAD') + '^{commit}')
+        if not revision:
+            raise ValueError(f'Cannot resolve Git revision: {ref or "HEAD"}')
+        return revision.strip()
+
+    target = None
+    if base and '..' in base:
+        separator = '...' if '...' in base else '..'
+        parts = base.split(separator)
+        if len(parts) != 2:
+            raise ValueError('base must contain one Git revision range')
+        left, right = (resolve(ref) for ref in parts)
+        old_revision = left
+        if separator == '...':
+            old_revision = (git(tools.root, 'merge-base', left, right) or '').strip()
+            if not old_revision:
+                raise ValueError('The revisions have no merge base')
+        target = right
+        diff_args = [old_revision, target]
+    else:
+        old_revision = resolve(base or 'HEAD')
+        if tools.auto_refresh:
+            tools.refresh()
+        diff_args = [old_revision]
     diff = git(tools.root, '-c', 'core.quotePath=false', 'diff', '--unified=0', '--no-color',
-               '--no-ext-diff', '--no-renames', '--relative', base or 'HEAD', timeout=60)
+               '--no-ext-diff', '--no-renames', '--relative', *diff_args, '--', timeout=60)
     if diff is None:
-        raise ValueError(f"git diff failed for {base or 'HEAD'} (not a git repository, or unknown revision)")
+        raise ValueError(f"git diff failed for {base or 'HEAD'}")
     before, after = defaultdict(list), defaultdict(list)
     deleted = []
     oldpath = newpath = None
@@ -151,16 +183,9 @@ def analyze_impact(tools, base: str | None) -> dict:
         for path in (git(tools.root, 'ls-files', '-z', '--others', '--exclude-standard') or '').split('\0'):
             if path:
                 after[path].append((1, 10**9))
-    result = _collect(tools, after, 'current')
+    result = _historical(tools, target, after, 'after') if target and after else _collect(tools, after, 'current')
     if before:
-        oldref = (base or 'HEAD').split('..', 1)[0]
-        if base and '...' in base:
-            left, right = base.split('...', 1)
-            oldref = (git(tools.root, 'merge-base', left or 'HEAD', right or 'HEAD') or '').strip()
-        revision = git(tools.root, 'rev-parse', '--verify', oldref + '^{commit}')
-        if not revision:
-            raise ValueError('cannot resolve base revision')
-        old = _historical(tools, revision.strip(), before)
+        old = _historical(tools, old_revision, before)
         keys = { (c['file_path'], c['symbol'], c['type']) for c in result['changed'] }
         result['changed'] += [c for c in old['changed'] if (c['file_path'], c['symbol'], c['type']) not in keys]
         # Keep old accesses too: removing a write or caller is itself an impact.
@@ -174,5 +199,8 @@ def analyze_impact(tools, base: str | None) -> dict:
                     seen.add(key)
         result['unmapped_files'] = sorted(set(result['unmapped_files']) | set(old['unmapped_files']))
     result.update(base=base or 'HEAD (uncommitted)', removed_files=sorted(set(deleted)),
-                  note='Current lines refer to the working tree; before lines refer to the base revision. Historical analysis excludes external extra roots.')
+                  revisions={'before': old_revision, 'after': target},
+                  note=('After lines refer to the target commit; before lines refer to the base revision. ' if target else
+                        'Current lines refer to the working tree; before lines refer to the base revision. ') +
+                       'Historical analysis excludes external extra roots.')
     return result

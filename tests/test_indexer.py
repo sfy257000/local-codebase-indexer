@@ -426,6 +426,11 @@ def test_comment_terms_are_mined_and_expand_chinese_queries(tmp_path):
         # the uncommented method is reached through the mined word
         top = [r["symbol"] for r in t.semantic_search("收帳", limit=10)["results"]]
         assert "E.Gate.ReceiveFromGate" in top
+        explained = t.semantic_search("收帳", limit=10, explain=True)['results']
+        gate = next(hit for hit in explained if hit['symbol'] == 'E.Gate.ReceiveFromGate')
+        receive = next(item for item in gate['explanation']['matched_expansions'] if item['term'] == 'receive')
+        source = next(item for item in receive['sources'] if item['source'] == 'mined_comments')
+        assert any(item['gram'] == '收帳' and item['supporting_symbols'] >= 5 for item in source['evidence'])
     finally:
         t.indexer.close()
 

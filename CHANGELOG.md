@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- Stable search ranking across page sizes/offsets, with query- and revision-bound continuation cursors.
+- Historical Git ranges analyze both requested snapshots instead of mixing in the current working tree.
+- ONNX identities fingerprint model/tokenizer/external weights and inference settings, triggering rebuilds when contents change.
+- Process-safe indexing, consistent query snapshots, bounded busy responses (CLI exit 4), and interrupted-batch recovery.
+- Context clipping preserves focus lines and reports omitted/clipped content.
+- Project synonyms reload on queries; malformed settings warn once per content version and recover after correction.
+- Opt-in search explanations show matched terms, expansion provenance, layer ranks/contributions and SQL evidence.
+- Project evaluation datasets, per-query reports, retrieval/latency/token metrics, baseline comparison and enforceable budgets.
+- Future Release events test and build once, validate versions, and upload the same artifacts to PyPI/GitHub with SHA256SUMS. Upload retries are idempotent and do not overwrite conflicting assets.
+
+
 ## 0.6.0
 
 ### Fixed

@@ -14,6 +14,8 @@ Two backends:
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 import os
 import re
 import zlib
@@ -76,6 +78,23 @@ class HashingEmbedder:
         return np.stack([self._vec(t) for t in texts]) if texts else np.zeros((0, DIM), np.float32)
 
 
+def _model_files(model_dir: str):
+    for directory, dirs, files in os.walk(model_dir):
+        dirs[:] = sorted(d for d in dirs if d not in ('.git', '.cache', '__pycache__', '.ai_context', '.venv', 'venv'))
+        for filename in sorted(files):
+            path = os.path.join(directory, filename)
+            if os.path.isfile(path):
+                yield path
+
+
+def _model_state(model_dir: str) -> tuple:
+    state = []
+    for path in _model_files(model_dir):
+        stat = os.stat(path)
+        state.append((os.path.relpath(path, model_dir), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino))
+    return tuple(state)
+
+
 class OnnxEmbedder:
     dim = DIM
 
@@ -83,7 +102,8 @@ class OnnxEmbedder:
         import onnxruntime as ort
         from tokenizers import Tokenizer
 
-        self.name = "onnx:" + os.path.basename(os.path.abspath(model_dir))
+        self.model_dir = os.path.abspath(model_dir)
+        self._state = _model_state(self.model_dir)
         self.tok = Tokenizer.from_file(os.path.join(model_dir, "tokenizer.json"))
         self.tok.enable_truncation(max_length=256)
         self.tok.enable_padding()
@@ -96,15 +116,38 @@ class OnnxEmbedder:
         if self.pooling not in ("mean", "cls"):
             raise ValueError("INDEXER_ONNX_POOLING must be 'mean' or 'cls'")
         self.query_prefix = os.environ.get("INDEXER_ONNX_QUERY_PREFIX", "")
-        self.name += f":{self.pooling}"
         out_dim = self.session.get_outputs()[0].shape[-1]
         if isinstance(out_dim, int):
             self.dim = out_dim
+        # Include tokenizer and external weight files, not just the directory name.
+        digest = hashlib.sha256()
+        for path in _model_files(self.model_dir):
+            relative = os.path.relpath(path, self.model_dir).replace(os.sep, '/')
+            digest.update(relative.encode('utf-8') + b'\0')
+            content = hashlib.sha256()
+            with open(path, 'rb') as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b''):
+                    content.update(block)
+            digest.update(content.digest())
+        digest.update(json.dumps({'pooling': self.pooling, 'dim': self.dim,
+                                  'query_prefix': self.query_prefix}, sort_keys=True).encode())
+        self.fingerprint = digest.hexdigest()
+        self.name = f"onnx:{os.path.basename(os.path.abspath(model_dir))}:{self.fingerprint}:{self.pooling}"
+        self.assert_unchanged()
+
+    def assert_unchanged(self) -> None:
+        try:
+            unchanged = _model_state(self.model_dir) == self._state
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            raise ValueError('ONNX model files changed while loaded; restart the server to load the new model and rebuild its index.')
 
     def embed_query(self, text: str) -> np.ndarray:
         return self.embed([self.query_prefix + text])[0]
 
     def embed(self, texts: Sequence[str]) -> np.ndarray:
+        self.assert_unchanged()
         if not texts:
             return np.zeros((0, self.dim), np.float32)
         out = []

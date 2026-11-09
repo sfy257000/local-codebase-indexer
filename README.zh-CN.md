@@ -51,6 +51,16 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 
 `serve` 通过 stdio 提供 JSON-RPC（MCP），暴露七个工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`、`codebase_index_doctor`。常驻的 server 在距离上次检查超过 15 秒时，查询前会重新检查索引（几千个文件无变动约 1 秒）。`codebase_get_data_access` 默认返回摘要（每区 5 条、程序全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附依赖文件。
 
+## 0.7.0：稳定导航与项目评测
+
+搜索排序不再随页数变化；`pagination.next_cursor` 可用于 `--cursor`／MCP `cursor`，索引或同义词变化时要求重新搜索。`--explain` 显示命中词、扩展来源、排序贡献及 SQL 证据。上下文裁剪优先保留焦点行；同义词自动重载，ONNX 模型和 tokenizer 使用内容指纹。
+
+`impact A..B` 和 `A...B` 使用指定版本的快照；多进程索引使用系统锁和一致性读取，繁忙时 CLI 返回退出码 4。`INDEXER_LOCK_TIMEOUT` 与 `INDEXER_BUSY_TIMEOUT` 控制等待秒数，中断批次会在下次索引时恢复。
+
+`evaluate --queries .ai_context/eval.json --save .ai_context/report.json` 支持项目问题集、Recall@k、MRR、延迟和估计 token，以及基准比较和质量门槛。数据格式为 `{"version":1,"queries":[{"id":"invoice","query":"读取发票","relevant":[{"file":"src/invoices.py","symbol":"load_invoice"}]}]}`。未达到 `--min-recall`／`--max-p95-ms`／`--max-mean-tokens` 门槛返回退出码 3。`benchmarks/queries_project.json` 是本仓库的人工导航示例，不是独立的真实用户评测。
+
+后续 Release workflow 使用同一份经过验证的构建产物发布到 PyPI 和 GitHub，自动生成 SHA256SUMS；使用 Actions 内置令牌，重复运行跳过相同附件，拒绝覆盖不同内容。修改 workflow 不会变更现有 Release。
+
 ## 诊断、筛选与分页（0.6.0）
 
 ```bash

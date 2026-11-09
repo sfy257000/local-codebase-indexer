@@ -12,6 +12,7 @@ Single-word (ASCII) triggers must match a whole word, CJK triggers match as subs
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 
@@ -71,15 +72,24 @@ GENERAL_GROUPS = [
 _WORD = re.compile(r"[A-Za-z0-9_]+")
 
 
-def _load_project(root: str | None) -> tuple[list[list[str]], set[str]]:
+def _load_project(root: str | None, payload: bytes | None = None) -> tuple[list[list[str]], set[str]]:
     if not root:
         return [], set()
     path = os.path.join(index_dir(root), "synonyms.json")
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        groups = [[str(w) for w in g] for g in data.get("groups", []) if isinstance(g, list)]
-        return groups, {str(w).lower() for w in data.get("disable", [])}
+        if payload is None:
+            with open(path, 'rb') as stream:
+                payload = stream.read()
+        data = json.loads(payload)
+        if not isinstance(data, dict):
+            raise ValueError('expected an object')
+        groups, disabled = data.get('groups', []), data.get('disable', [])
+        if not isinstance(groups, list) or any(not isinstance(g, list) or not g or
+                any(not isinstance(word, str) or not word.strip() for word in g) for g in groups):
+            raise ValueError('groups must contain nonempty lists of nonempty strings')
+        if not isinstance(disabled, list) or any(not isinstance(word, str) for word in disabled):
+            raise ValueError('disable must be a list of strings')
+        return groups, {word.lower() for word in disabled}
     except FileNotFoundError:
         return [], set()
     except (OSError, ValueError, AttributeError) as exc:
@@ -90,10 +100,29 @@ def _load_project(root: str | None) -> tuple[list[list[str]], set[str]]:
 
 class Expander:
     def __init__(self, root: str | None = None):
-        extra, disabled = _load_project(root)
+        self.root = root
+        self.version = ''
+        self.reload(force=True)
+
+    def reload(self, force: bool = False) -> bool:
+        payload = None
+        try:
+            with open(os.path.join(index_dir(self.root), 'synonyms.json'), 'rb') as stream:
+                payload = stream.read()
+                version = hashlib.sha256(payload).hexdigest()
+        except FileNotFoundError:
+            version = 'missing'
+        except (OSError, TypeError):
+            version = 'unreadable'
+        if not force and version == self.version:
+            return False
+        extra, disabled = _load_project(self.root, payload) if payload is not None else ([], set())
+        self.version = version
+        self.project_groups = [[w.lower() for w in g] for g in extra]
         self.embedding_groups = [[w.lower() for w in g] for g in DEFAULT_GROUPS + extra]
         self.groups = self.embedding_groups + [[w.lower() for w in g] for g in GENERAL_GROUPS]
         self.disabled = disabled
+        return True
 
     def expand(self, query: str, for_embedding: bool = False) -> list[str]:
         """Extra terms (not in the query yet) for every synonym group the query triggers."""
@@ -113,3 +142,18 @@ class Expander:
                     continue
                 extra.append(w)
         return extra
+
+    def sources(self, query: str, term: str) -> list[dict]:
+        """Report the groups that actually caused an expansion, without inventing semantics."""
+        low = query.lower()
+        words = set(_WORD.findall(low))
+        words |= {w[:-1] for w in words if len(w) > 3 and w.endswith('s')}
+        out = []
+        for source, groups in (('builtin', DEFAULT_GROUPS), ('general', GENERAL_GROUPS), ('project', self.project_groups)):
+            for group in groups:
+                group = [w.lower() for w in group]
+                triggers = [w for w in group if w not in self.disabled and
+                            ((w in words) if w.isascii() else (w in low))]
+                if term in group and triggers:
+                    out.append({'source': source, 'group': group[0], 'triggers': triggers})
+        return out

@@ -22,6 +22,8 @@ TOOLS = [
                 "query": {"type": "string", "description": "Semantic explanation of what you are looking for."},
                 "limit": {"type": "integer", "description": "Maximum chunks to return (default 5).", "default": 5, "minimum": 1, "maximum": 50},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "cursor": {"type": "string", "description": "Continue using pagination.next_cursor; query and filters must remain unchanged."},
+                "explain": {"type": "boolean", "default": False, "description": "Explain matched query terms, synonym sources, layer ranks, and data-access evidence."},
                 "file_pattern": {"type": "string", "description": "File glob, e.g. *Repository*.cs"},
                 "language": {"type": "string", "enum": ["csharp", "python", "javascript", "typescript", "tsx", "text"]},
                 "related": {"type": "boolean", "description": "Also list files linked to the top hits in the dependency graph.", "default": False},
@@ -93,7 +95,8 @@ TOOLS = [
 def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
     if name == "codebase_semantic_search":
         return render_search(tools.semantic_search(args["query"], args.get("limit", 5), args.get("related", False),
-                                                   args.get("file_pattern"), args.get("language"), args.get("offset", 0)))
+                                                   args.get("file_pattern"), args.get("language"), args.get("offset", 0),
+                                                   cursor=args.get("cursor"), explain=args.get("explain", False)))
     if name == "codebase_get_symbol_relations":
         return render_relations(tools.symbol_relations(args["symbol_name"], args.get("relation_direction", "both")))
     if name == "codebase_get_optimized_context":

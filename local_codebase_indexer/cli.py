@@ -8,6 +8,7 @@ import os
 import sys
 
 from . import __version__
+from .locking import IndexBusyError
 
 
 def _tools(root: str):
@@ -48,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--query", dest="query_opt")
     s.add_argument("--limit", type=_positive, default=5)
     s.add_argument("--offset", type=_nonnegative, default=0)
+    s.add_argument("--cursor", help="continue a search against the same index and settings")
+    s.add_argument("--explain", action="store_true", help="show matched terms, expansion sources, and ranking evidence")
     s.add_argument("--file", dest="file_pattern", help="file glob, e.g. '*Repository*.cs'")
     s.add_argument("--language", help="csharp, python, javascript, typescript, tsx or text")
     s.add_argument("--related", action="store_true", help="also list dependency-graph neighbours of the top hits")
@@ -78,6 +81,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="symbols, tables, programs and pages touched by a git diff")
     s.add_argument("base", nargs="?", help="git revision or range (default: uncommitted work against HEAD)")
     s.add_argument("--full", action="store_true", help="list every changed symbol")
+
+    s = sub.add_parser("evaluate", help="evaluate real project navigation questions and enforce quality budgets")
+    s.add_argument("--queries", required=True, help="versioned JSON question set")
+    s.add_argument("--limit", type=_positive, default=5)
+    s.add_argument("--baseline", help="earlier report for the same question set")
+    s.add_argument("--save", help="save a JSON evaluation report")
+    s.add_argument("--min-recall", type=float)
+    s.add_argument("--max-p95-ms", type=float)
+    s.add_argument("--max-mean-tokens", type=float)
+    s.add_argument("--max-recall-drop", type=float, default=0.0)
 
     s = sub.add_parser("doctor", help="diagnose index coverage and excluded files")
     s.add_argument("--path", help="explain why a specific file is excluded")
@@ -137,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             if not q:
                 print("error: a query is required", file=sys.stderr)
                 return 2
-            res = t.semantic_search(q, args.limit, args.related, args.file_pattern, args.language, args.offset)
+            res = t.semantic_search(q, args.limit, args.related, args.file_pattern, args.language, args.offset, cursor=args.cursor, explain=args.explain)
             _emit(res, render_search(res), args.json)
         elif args.cmd in ("relations", "codebase_get_symbol_relations"):
             sym = args.symbol_opt or args.symbol
@@ -167,12 +180,33 @@ def main(argv: list[str] | None = None) -> int:
             res = t.index_status()
             _emit(res, render_status(res), args.json)
             return 0 if res["state"] in ("fresh", "stale") else 3
+        elif args.cmd == "evaluate":
+            from .evaluation import evaluate, render_evaluation, save_report
+            if args.save and any(os.path.realpath(args.save) == os.path.realpath(path)
+                                 for path in (args.queries, args.baseline) if path):
+                raise ValueError('Save the report separately from the input questions and baseline')
+            with open(args.queries, encoding='utf-8') as stream:
+                dataset = json.load(stream)
+            baseline = None
+            if args.baseline:
+                with open(args.baseline, encoding='utf-8') as stream:
+                    baseline = json.load(stream)
+            res = evaluate(t, dataset, limit=args.limit, baseline=baseline,
+                           min_recall=args.min_recall, max_p95_ms=args.max_p95_ms,
+                           max_mean_tokens=args.max_mean_tokens, max_recall_drop=args.max_recall_drop)
+            if args.save:
+                save_report(res, args.save)
+            _emit(res, render_evaluation(res), args.json)
+            return 0 if res['passed'] else 3
         elif args.cmd == "doctor":
             res = t.doctor(args.path)
             _emit(res, render_doctor(res), args.json)
         elif args.cmd == "stats":
             st = t.stats()
             _emit(st, "\n".join(f"{k}: {v}" for k, v in st.items()), args.json)
+    except IndexBusyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 4
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

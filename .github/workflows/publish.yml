@@ -2,16 +2,71 @@ name: publish
 on:
   release:
     types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 jobs:
-  pypi:
+  validate:
     runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write   # PyPI trusted publishing, no API token stored
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install build && python -m build
+      - run: pip install -e ".[dev,onnx]" onnx build twine
+      - run: python -c "import onnx, onnxruntime, tokenizers" && python -m pytest -q -rs
+      - run: python -m build && python -m twine check dist/*
+      - name: Validate release versions and generate checksums
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python scripts/release_assets.py --tag "$RELEASE_TAG" --dist dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+  pypi:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Remove checksum manifest from the PyPI upload directory
+        run: rm dist/SHA256SUMS
       - uses: pypa/gh-action-pypi-publish@release/v1
+  assets:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Upload missing release assets and verify their digests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: python scripts/release_assets.py --tag "$RELEASE_TAG" --repo "$RELEASE_REPO" --dist dist --upload

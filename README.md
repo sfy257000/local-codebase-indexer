@@ -68,13 +68,73 @@ local-codebase-indexer --root <project> data-access MES_Lot --full
 
 `doctor` reports supported text files, ignore rules, excluded directories, unsupported extensions, files over 5 MB, binary files and index health. `--path` explains a specific file, including a parent directory that prevents indexing. Directory counts are counts of excluded directories, not all the files hidden inside them. Nested `.gitignore` negations override parent file patterns; an excluded parent directory must first be re-included, just as with Git. Built-in excluded directories such as `node_modules` remain excluded.
 
-Search filters apply **before** ranking. `--file` is a case-sensitive glob over the complete project-relative path (`*` also matches `/`); languages are `csharp`, `python`, `javascript`, `typescript`, `tsx`, and `text`. The JSON `pagination` object has `has_more` and `next_offset`; keep the same query and filters for subsequent pages. Pages assume the index remains unchanged. No-result responses suggest similar symbols where available and explain useful next steps. General verb paraphrases expand keyword/symbol matching without diluting vector queries; project-specific jargon still belongs in `.ai_context/synonyms.json`.
+Search filters apply **before** ranking. `--file` is a case-sensitive glob over the complete project-relative path (`*` also matches `/`); languages are `csharp`, `python`, `javascript`, `typescript`, `tsx`, and `text`. The JSON `pagination` object has `has_more` and `next_offset`; keep the same query and filters for subsequent pages. Offset pages assume the index remains unchanged; cursor pages reject a changed index or configuration. No-result responses suggest similar symbols where available and explain useful next steps. General verb paraphrases expand keyword/symbol matching without diluting vector queries; project-specific jargon still belongs in `.ai_context/synonyms.json`.
 
 Data-access `--confidence` selects an exact level (`confirmed`, `probable`, or `uncertain`). `--limit` and `--offset` apply independently to each section, including programs and procedure accesses. JSON includes `pagination.sections` with totals and next offsets. MCP accepts the same `limit`, `offset`, and `confidence` fields; search uses `file_pattern` and `language`. `--full` / MCP `detail=true` lists all entries when no explicit page size is supplied. The old 40-entry display and 200-entry query caps have been removed.
 
 `impact` includes both current symbols and affected symbols/accesses/callers from the base revision, so deleting a method or file remains visible. `snapshot: before` means its line numbers refer to the base revision, not the current file. The first request for a base revision builds a temporary historical index, which can take time on a large repository; a complete baseline is cached under `.ai_context/impact/` for reuse. Remove this directory to reclaim space. Historical analysis covers files in the Git archive; external `extra_roots` are not reconstructed. Static call-graph confidence and known language limitations still apply.
 
 A nonexistent `--root` is rejected without creating it. `index` returns exit status 3 for an empty or partially failed run; use `doctor` and `status` to diagnose it. Invalid MCP inputs return an error while keeping the server available for the next request.
+
+## Stable navigation and search explanations
+
+Search ranking is independent of `--limit` and `--offset`. To continue a search safely, use the opaque `pagination.next_cursor` returned in JSON, or the cursor printed by the text/MCP response:
+
+```bash
+local-codebase-indexer --root <project> search "retrieve invoice" --limit 5 --explain --json
+local-codebase-indexer --root <project> search "retrieve invoice" --limit 5 --cursor '<next_cursor>' --json
+```
+
+Keep the same query, file glob and language when using a cursor; the page size may change. Cursors are bound to a completed index revision, the embedding model, and synonym settings. A no-op refresh keeps them valid; a changed index or configuration rejects the cursor with an instruction to start again. `--offset` remains supported but has no revision guard. MCP search accepts `cursor` and `explain` too.
+
+`--explain` adds matched query terms, matched synonym expansions with their built-in/project/mined-comment sources, and each retrieval layer's rank and RRF contribution. Data-access hits also carry SQL evidence, confidence, access mechanism and procedure chains. Existing `relations` output includes caller resolution reasons and confidence. These are static-analysis/retrieval explanations, not proof that a runtime path executes or a score is a probability. Explanations are omitted by default to keep responses compact.
+
+Project synonym settings reload on subsequent queries, including deletion and replacement of the settings file. Invalid settings log a warning and fall back to built-in groups; the same invalid contents are not repeatedly logged. ONNX identities include a streamed content fingerprint of the model directory (including tokenizer and external weights), pooling, dimensions and query prefix. Use a dedicated model directory: changing other files in that directory can also cause a rebuild. Generated `.ai_context`, environment and cache directories are excluded from the fingerprint. Changes to loaded model files are rejected; restart the server to load the updated model. Processes sharing an index must use the same model/settings.
+
+Large context requests retain focus lines first, fit neighboring lines within the character budget, and clip individual oversized lines. Returned ranges describe the content actually returned; `omitted_lines` and `truncated_lines` explain clipping. An entirely out-of-file focus request is an error.
+
+Git ranges such as `A..B` and `A...B` analyze the actual target commit, even when HEAD or the working tree differs. Range results use `snapshot=after`; `revisions` identifies both commits. A single revision still compares that revision against the working tree. Historical line numbers always belong to their labeled snapshot.
+
+## Evaluate your own project questions
+
+Keep questions collected from real navigation work in `.ai_context/eval.json` (ignored by Git and the index):
+
+```json
+{
+  "version": 1,
+  "queries": [
+    {
+      "id": "invoice-read",
+      "query": "Where do we retrieve an invoice?",
+      "language": "python",
+      "relevant": [{"file": "src/invoices.py", "symbol": "load_invoice"}]
+    }
+  ]
+}
+```
+
+Replace the example with verified file paths and optional qualified-symbol suffixes from your project. Each question needs a unique ID and at least one expected answer. `file_pattern` and `language` are optional query filters. Avoid copying question text into the source corpus or authoring only questions that already rank well.
+
+```bash
+local-codebase-indexer --root <project> evaluate --queries <project>/.ai_context/eval.json --save <project>/.ai_context/baseline.json
+local-codebase-indexer --root <project> evaluate --queries <project>/.ai_context/eval.json --baseline <project>/.ai_context/baseline.json --min-recall 0.8 --max-recall-drop 0.02 --max-p95-ms 500 --max-mean-tokens 1500 --save <project>/.ai_context/current.json
+```
+
+The report includes Recall@k, hit rate, MRR, p50/p95 latency, estimated output tokens, per-question answers and the index/model/configuration identity. Indexing time is separate from search latency. Tokens are estimated as `ceil(rendered characters / 4)`, not counted by a specific model tokenizer. Empty/invalid datasets fail; breached quality or performance budgets return exit status 3. Baseline comparisons require the same questions, answers, filters and result limit. Reports cannot overwrite their input questions or baseline.
+
+`benchmarks/queries_project.json` supplies 15 curated questions about this repository's actual implementation. They are navigation smoke examples, not collected user queries or an independent quality benchmark. Run them with `local-codebase-indexer --root . evaluate --queries benchmarks/queries_project.json --save .ai_context/project-report.json`; use your own recorded questions for representative quality gates.
+
+## Multiple local processes
+
+Index initialization and writes are coordinated with an OS lock. Query reads use a consistent SQLite snapshot and wait for a writer to finish its batches. POSIX readers share a lock; Windows readers serialize. Locks are automatically released on process exit; do not delete `.lock` files while processes are running.
+
+`INDEXER_LOCK_TIMEOUT` controls the maximum process-lock wait (default 10 seconds), and `INDEXER_BUSY_TIMEOUT` controls SQLite's wait for writers that do not use the indexer's lock (default 5 seconds). Both accept finite nonnegative seconds. CLI contention returns exit status 4 with a retry hint; MCP reports a tool error while keeping the session available. Interrupted batch indexing is reported as degraded and automatically forces a complete refresh on the next indexing run. Separate `CodebaseTools` instances/connections are required for separate threads.
+
+## Release automation
+
+Publishing a future GitHub Release runs tests, builds distributions once, validates package/tag/registry versions, and generates `SHA256SUMS`. PyPI and GitHub attachments receive the same validated artifacts. The attachment job uses GitHub Actions' built-in token with `contents: write`; no personal upload token is needed. Repeating the attachment job skips identical assets and refuses to overwrite conflicting checksums.
+
+For local validation without publishing: `python scripts/release_assets.py --tag v<package-version> --dist <build-directory>`. The explicit `--upload --repo owner/name` flags perform uploads. Existing releases are not modified by editing this workflow.
 
 ## Three-layer index
 

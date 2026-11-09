@@ -51,6 +51,29 @@ claude mcp add local-indexer -- local-codebase-indexer --root /path/to/project s
 
 `serve` 以 stdio 提供 JSON-RPC（MCP），暴露七個工具：`codebase_semantic_search`、`codebase_get_symbol_relations`、`codebase_get_optimized_context`、`codebase_get_data_access`、`codebase_impact_analysis`、`codebase_index_status`、`codebase_index_doctor`。長駐的 server 在距離上次檢查超過 15 秒時，查詢前會重新檢查索引（幾千個檔案無變動約 1 秒）。`codebase_get_data_access` 預設回摘要（每區 5 筆、程式全列），加 `detail` 才列全部；`codebase_semantic_search` 加 `related` 才附相依檔案。
 
+## 0.7.0：穩定導覽與專案評測
+
+- 搜尋排序不再隨頁數或每頁筆數改變。JSON 的 `pagination.next_cursor` 可傳給 `--cursor`／MCP `cursor`；查詢與篩選須保持相同，每頁筆數可改變。索引、模型或同義詞設定改變時，游標會要求重新搜尋；舊有 offset 仍可用，但沒有版本保護。
+- `search --explain`／MCP `explain=true` 顯示命中詞、同義詞來源、各層排序貢獻，以及資料存取的 SQL 證據與可信度。分數不是機率，靜態分析也不代表執行時必然經過該路徑。
+- 同義詞設定會在後續查詢重新載入。ONNX 模型、tokenizer、外部權重與設定會納入指紋，內容改變後重建索引；請使用專用模型目錄。大型 context 請求優先保留焦點行，並回報省略／裁切資訊。
+- `impact A..B`／`A...B` 分析指定的兩個 Git 版本，不會混入 HEAD 或未提交的內容；`snapshot=after` 行號屬於區間終點版本。
+- 多程序共用索引時會協調寫入與一致性讀取。忙碌時 CLI 回傳結束碼 4；`INDEXER_LOCK_TIMEOUT`／`INDEXER_BUSY_TIMEOUT` 分別控制鎖定與 SQLite 等待秒數。中斷的批次索引會被偵測並在下次索引時重建；不要刪除使用中的鎖定檔。
+
+將真實使用問題與人工確認的答案放在 `.ai_context/eval.json`：
+
+```json
+{"version":1,"queries":[{"id":"invoice","query":"在哪裡讀取發票？","relevant":[{"file":"src/invoices.py","symbol":"load_invoice"}]}]}
+```
+
+```bash
+local-codebase-indexer --root <專案> evaluate --queries <專案>/.ai_context/eval.json --save <專案>/.ai_context/baseline.json
+local-codebase-indexer --root <專案> evaluate --queries <專案>/.ai_context/eval.json --baseline <專案>/.ai_context/baseline.json --min-recall 0.8 --max-recall-drop 0.02 --max-p95-ms 500 --max-mean-tokens 1500
+```
+
+評測追蹤 Recall@k、MRR、命中率、延遲與估計 token；token 使用字元數除以 4 的估算。空題目集或錯誤資料不會算成功，未達門檻回傳結束碼 3。`benchmarks/queries_project.json` 提供本儲存庫的 15 題導覽範例，並非獨立或實際使用者收集的評測；請以自己的真實問題建立品質門檻。
+
+後續 GitHub Release 會自動完成測試、一次建置、版本檢查、PyPI 發布及附件／SHA256SUMS 上傳。附件使用 GitHub Actions 內建權杖，重跑時略過相同檔案，遇到不同校驗值則拒絕覆寫；修改 workflow 本身不會變更現有 Release。
+
 ## 診斷、篩選與分頁（0.6.0）
 
 ```bash

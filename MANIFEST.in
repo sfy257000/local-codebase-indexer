@@ -1,9 +1,10 @@
 include server.json CHANGELOG.md README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
+graft scripts
 graft tests
 graft plugins
 graft .claude-plugin
 graft benchmarks
 prune benchmarks/__pycache__
-global-exclude __pycache__ *.pyc
+global-exclude __pycache__ *.py[cod]
 prune benchmarks/corpus/.ai_context
 include bin/indexer

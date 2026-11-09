@@ -9,6 +9,7 @@ import re
 import sqlite3
 import subprocess
 import time
+import uuid
 from contextlib import contextmanager
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from .callgraph import resolve_calls
 from .embedder import get_embedder, split_identifier
 from .langparse import CLASS_LIKE, parse_file
 from .scanner import iter_files
+from .locking import IndexBusyError, index_lock, is_busy
 
 _TYPE_KINDS = tuple(CLASS_LIKE)
 
@@ -134,13 +136,33 @@ class Indexer:
 
     # ------------------------------------------------------------------ public
     def update(self, force: bool = False) -> IndexStats:
+        with index_lock(self.db_path):
+            try:
+                if hasattr(self.embedder, 'assert_unchanged'):
+                    self.embedder.assert_unchanged()
+                return self._update(force)
+            except sqlite3.OperationalError as exc:
+                self.conn.rollback()
+                if is_busy(exc):
+                    raise IndexBusyError('Index database is busy. Retry shortly; another program may be writing to it.') from exc
+                raise
+            except BaseException:
+                self.conn.rollback()
+                raise
+
+    def _update(self, force: bool = False) -> IndexStats:
         stats = IndexStats()
         conn = self.conn
+        # A crash between batch commits must not leave a partially resolved graph trusted.
+        force = force or dbmod.get_meta(conn, 'indexing') == '1'
+        dbmod.set_meta(conn, 'indexing', '1')
+        conn.commit()
 
         if (dbmod.get_meta(conn, "embedder") != self.embedder.name
                 or dbmod.get_meta(conn, "index_version") != dbmod.INDEX_VERSION):
             # different embedding space or data layout (or first run): rebuild everything
             dbmod.clear_all(conn)
+            dbmod.set_meta(conn, 'indexing', '1')
             dbmod.set_meta(conn, "embedder", self.embedder.name)
             dbmod.set_meta(conn, "index_version", dbmod.INDEX_VERSION)
             conn.commit()
@@ -207,15 +229,18 @@ class Indexer:
             resolve_page_actions(conn)
             resolve_ef_access(conn)
             mine_terms(conn)
-        self._record_run_meta()
+        self._record_run_meta(changed or force)
+        conn.execute("DELETE FROM meta WHERE key='indexing'")
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
         stats.symbols = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
         return stats
 
     # ------------------------------------------------------------------ internals
-    def _record_run_meta(self) -> None:
+    def _record_run_meta(self, changed: bool = False) -> None:
         conn = self.conn
+        if changed or not dbmod.get_meta(conn, 'index_revision'):
+            dbmod.set_meta(conn, 'index_revision', uuid.uuid4().hex)
         dbmod.set_meta(conn, "last_indexed_at", str(int(time.time())))
         info = git_info(self.root)
         if info is None:

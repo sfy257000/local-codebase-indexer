@@ -9,6 +9,7 @@ import re
 import sqlite3
 import textwrap
 import time
+from functools import wraps
 from collections import defaultdict
 
 import numpy as np
@@ -20,6 +21,7 @@ from .core import Indexer, cjk_bigrams, git_info
 from .scanner import ScanReport, explain_path, extra_roots, iter_files
 from .embedder import split_identifier
 from .synonyms import Expander
+from .pagination import decode_cursor, encode_cursor, search_key
 
 RRF_K = 60
 RECHECK_SECONDS = 15  # a long-lived server re-checks the index at most this often
@@ -84,6 +86,18 @@ def _has_word(term: str, text: str) -> bool:
     return term in words
 
 
+def _consistent_read(*, refresh: bool = False):
+    def decorate(method):
+        @wraps(method)
+        def wrapped(self, *args, **kwargs):
+            if refresh:
+                self._ensure()
+            with dbmod.read_snapshot(self.conn, self.indexer.db_path):
+                return method(self, *args, **kwargs)
+        return wrapped
+    return decorate
+
+
 class CodebaseTools:
     """Facade exposing codebase_semantic_search / get_symbol_relations / get_optimized_context."""
 
@@ -97,6 +111,7 @@ class CodebaseTools:
         self._checked_at: float | None = None
 
     def refresh(self, force: bool = False):
+        self.expander.reload()
         stats = self.indexer.update(force=force)
         self._checked_at = time.monotonic()
         return stats
@@ -104,13 +119,18 @@ class CodebaseTools:
     def _ensure(self) -> None:
         """Incremental refresh before a query; a long-lived MCP server re-checks once the last check is older than
         ``RECHECK_SECONDS`` (a no-op check costs about a second on a few thousand files)."""
+        self.expander.reload()
+        if hasattr(self.embedder, 'assert_unchanged'):
+            self.embedder.assert_unchanged()
         if self.auto_refresh and (self._checked_at is None
                                   or time.monotonic() - self._checked_at > RECHECK_SECONDS):
             self.refresh()
 
     # ------------------------------------------------------------------ Tool 1
+    @_consistent_read(refresh=True)
     def semantic_search(self, query: str, limit: int = 5, related: bool = False,
-                        file_pattern: str | None = None, language: str | None = None, offset: int = 0) -> dict:
+                        file_pattern: str | None = None, language: str | None = None, offset: int = 0,
+                        cursor: str | None = None, explain: bool = False) -> dict:
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a nonempty string")
         if offset < 0:
@@ -118,8 +138,13 @@ class CodebaseTools:
         from .scanner import LANGUAGE_BY_EXT
         if language is not None and language not in set(LANGUAGE_BY_EXT.values()):
             raise ValueError("unsupported language; choose " + ", ".join(sorted(set(LANGUAGE_BY_EXT.values()))))
-        self._ensure()
         limit = max(1, min(int(limit or 5), 50))
+        revision = dbmod.get_meta(self.conn, 'index_revision') or 'unindexed'
+        key = search_key(query, file_pattern, language, self.expander.version, self.embedder.name)
+        if cursor is not None:
+            if offset:
+                raise ValueError('Use cursor or offset, not both.')
+            offset = decode_cursor(cursor, revision, key)
         wanted = offset + limit + 1
         scope = None
         self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS search_scope (rowid INTEGER PRIMARY KEY)")
@@ -130,11 +155,9 @@ class CodebaseTools:
                 if (not file_pattern or fnmatch.fnmatchcase(r['file_path'], file_pattern))
                 and (not language or r['language'] == language)}
             self.conn.executemany("INSERT INTO search_scope VALUES(?)", [(rid,) for rid in scope])
-        self.conn.commit()
         scope_sql = " AND rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
         chunk_scope = " AND c.rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
-        # a typed identifier needs room for its whole scope (every chunk of WD0096*.cs), plain prose does not
-        pool = max((offset + limit) * 6, 100 if self._whole_identifiers(query) else 30)
+        # Rank independently of page size/offset; changing candidate pools changes RRF scores.
         mined = self._mined_expansion(query)
         extra = list(dict.fromkeys(self.expander.expand(query) + mined))
         vector_extra = list(dict.fromkeys(self.expander.expand(query, for_embedding=True) + mined))
@@ -151,8 +174,8 @@ class CodebaseTools:
             match = " OR ".join('"' + t.replace('"', "") + '"' for t in terms)
             try:
                 rows = self.conn.execute(
-                    "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?" + scope_sql + " ORDER BY bm25(chunks_fts) LIMIT ?",
-                    (match, pool),
+                    "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?" + scope_sql + " ORDER BY bm25(chunks_fts), rowid",
+                    (match,),
                 ).fetchall()
                 ranked["keyword"] = [r[0] for r in rows]
             except sqlite3.OperationalError:
@@ -166,13 +189,13 @@ class CodebaseTools:
                 for r in self.conn.execute(
                     "SELECT c.rowid, s.symbol_name, s.qualified_name FROM chunk_metadata c "
                     "JOIN symbols s ON s.id = c.symbol_id "
-                    "WHERE (lower(s.symbol_name) LIKE ? OR lower(s.qualified_name) LIKE ?)" + chunk_scope + " LIMIT ?",
-                    (like, like, max(500, pool)),
+                    "WHERE (lower(s.symbol_name) LIKE ? OR lower(s.qualified_name) LIKE ?)" + chunk_scope,
+                    (like, like),
                 ):
                     if _has_word(t, r["symbol_name"]) or _has_word(t, r["qualified_name"] or ""):
                         scores[r[0]] += 1
                 for r in self.conn.execute(
-                    "SELECT rowid, file_path FROM chunk_metadata WHERE lower(file_path) LIKE ?" + scope_sql + " LIMIT ?", (like, max(300, pool))
+                    "SELECT rowid, file_path FROM chunk_metadata WHERE lower(file_path) LIKE ?" + scope_sql + " ORDER BY rowid", (like,)
                 ):
                     if _has_word(t, r["file_path"]):
                         scores[r[0]] += 1
@@ -183,23 +206,24 @@ class CodebaseTools:
                 like = f"%{squashed}%"
                 for r in self.conn.execute(
                     "SELECT c.rowid FROM chunk_metadata c JOIN symbols s ON s.id = c.symbol_id "
-                    "WHERE replace(lower(s.symbol_name), '_', '') LIKE ?" + chunk_scope + " LIMIT ?", (like, max(500, pool))):
+                    "WHERE replace(lower(s.symbol_name), '_', '') LIKE ?" + chunk_scope + " ORDER BY c.rowid", (like,)):
                     scores[r[0]] += 3
                     exact_ids.add(r[0])
                 for r in self.conn.execute(
-                    "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ?" + scope_sql + " LIMIT ?", (like, max(300, pool))):
+                    "SELECT rowid FROM chunk_metadata WHERE replace(lower(file_path), '_', '') LIKE ?" + scope_sql + " ORDER BY rowid", (like,)):
                     scores[r[0]] += 2
                     exact_ids.add(r[0])  # in a file named after it (WD0096Service.cs: SetRecord)
-            ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:pool]
+            ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
             ranked["symbol"] = [rid for rid, _ in ordered]
             # equal match counts must share a rank, otherwise arbitrary row order decides
             tie_rank: dict[int, int] = {}
+            first_rank: dict[int, int] = {}
             for pos, (rid, sc) in enumerate(ordered, start=1):
-                tie_rank[rid] = next(i for i, (_, s2) in enumerate(ordered, start=1) if s2 == sc)
+                tie_rank[rid] = first_rank.setdefault(sc, pos)
             ranks_override["symbol"] = tie_rank
 
         # vector layer: cosine similarity over local embeddings
-        rows = self.conn.execute("SELECT rowid, chunk_embedding FROM vss_chunks WHERE 1=1" + scope_sql).fetchall()
+        rows = self.conn.execute("SELECT rowid, chunk_embedding FROM vss_chunks WHERE 1=1" + scope_sql + " ORDER BY rowid").fetchall()
         if rows:
             ids = np.fromiter((r[0] for r in rows), dtype=np.int64, count=len(rows))
             mat = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), -1)
@@ -208,17 +232,21 @@ class CodebaseTools:
                   else self.embedder.embed([qtext])[0])
             if float(np.linalg.norm(qv)) > 0:
                 sims = mat @ qv
-                top = np.argsort(-sims)[:pool]
+                top = np.argsort(-sims, kind='stable')
                 ranked["vector"] = [int(ids[i]) for i in top if sims[i] > 0]
 
+        layer_scores = {}
         fused: dict[int, float] = defaultdict(float)
         via: dict[int, list[str]] = defaultdict(list)
         for name, lst in ranked.items():
             for rank, rid in enumerate(lst, start=1):
                 rank = ranks_override.get(name, {}).get(rid, rank)
-                fused[rid] += LAYER_WEIGHTS[name] / (RRF_K + rank)
+                contribution = LAYER_WEIGHTS[name] / (RRF_K + rank)
+                fused[rid] += contribution
+                if explain:
+                    layer_scores.setdefault(rid, {})[name] = {'rank': rank, 'rrf_contribution': round(contribution, 8)}
                 via[rid].append(name)
-        top_ids = [rid for rid, _ in sorted(fused.items(), key=lambda kv: -kv[1])]
+        top_ids = [rid for rid, _ in sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))]
         if exact_ids:  # a typed identifier beats sub-word noise (every *Lot class), ties keep the fused order
             exact = [r for r in top_ids if r in exact_ids]
             # within its scope, names that also match the rest of the query come first ("WD0096 存檔" -> SetRecord)
@@ -285,6 +313,34 @@ class CodebaseTools:
 
         has_more = len(results) > offset + limit
         results = results[offset:offset + limit]
+        if explain:
+            for result in results:
+                row = self.conn.execute(
+                    'SELECT rowid, raw_text FROM chunk_metadata WHERE file_path=? AND start_line=? AND end_line=?',
+                    (result['file_path'], result['start_line'], result['end_line'])).fetchone()
+                document = set(_query_terms((row['raw_text'] if row else result['snippet']) + ' ' +
+                                           result['file_path'] + ' ' + (result['symbol'] or '')))
+                matched = [t for t in _query_terms(query) if t in document]
+                expansions = []
+                for term in extra:
+                    matches = [t for t in _query_terms(term) if t in document]
+                    if not matches:
+                        continue
+                    sources = self.expander.sources(query, term)
+                    if term in mined:
+                        grams = sorted({run[i:i + 2] for run in re.findall(r'[一-鿿]+', query) for i in range(len(run) - 1)})
+                        evidence = [dict(row) for row in self.conn.execute(
+                            f"SELECT gram, n AS supporting_symbols FROM mined_terms WHERE word=? "
+                            f"AND gram IN ({','.join('?' * len(grams))}) ORDER BY n DESC, gram", (term, *grams))]
+                        sources.append({'source': 'mined_comments', 'word': term, 'evidence': evidence})
+                    expansions.append({'term': term, 'matched_terms': matches, 'sources': sources})
+                detail = {'matched_query_terms': matched, 'matched_expansions': expansions,
+                          'layers': layer_scores.get(row['rowid'], {}) if row else {},
+                          'note': 'Ranks and matched terms explain retrieval; scores are not probabilities.'}
+                if result.get('data_access'):
+                    detail['routing'] = result['data_access']
+                    detail['note'] += ' Data-access routing takes precedence over the hybrid layer scores.'
+                result['explanation'] = detail
         hints = []
         suggestions = []
         if not results:
@@ -294,7 +350,9 @@ class CodebaseTools:
                      "Try an identifier or fewer words; remove file/language filters to widen the search."]
         return {"query": query, "results": results,
                 "pagination": {"offset": offset, "limit": limit, "has_more": has_more,
-                               "next_offset": offset + limit if has_more else None},
+                               "next_offset": offset + limit if has_more else None,
+                               "next_cursor": encode_cursor(offset + limit, revision, key) if has_more else None,
+                               "index_revision": revision},
                 "filters": {"file_pattern": file_pattern, "language": language},
                 "suggestions": suggestions, "hints": hints,
                 "related_files": self._related_files(results[:3]) if related else []}
@@ -306,7 +364,7 @@ class CodebaseTools:
         if not grams:
             return []
         rows = self.conn.execute(
-            f"SELECT word FROM mined_terms WHERE gram IN ({','.join('?' * len(grams))}) ORDER BY n DESC", grams)
+            f"SELECT word FROM mined_terms WHERE gram IN ({','.join('?' * len(grams))}) ORDER BY n DESC, gram, word", grams)
         return list(dict.fromkeys(r[0] for r in rows))
 
     def _ordinary_hit(self, rid: int, fused: dict, via: dict) -> dict | None:
@@ -382,17 +440,17 @@ class CodebaseTools:
             "file_path": row["file_path"], "start_line": row["start_line"], "end_line": row["end_line"],
             "symbol": row["qualified_name"], "symbol_type": row["symbol_type"], "signature": row["signature"],
             "score": 1.0, "matched_by": ["data_access"],
-            "data_access": {k: acc[k] for k in ("target", "access", "op", "via", "confidence", "line", "depth", "via_chain")},
+            "data_access": {k: acc[k] for k in ("target", "access", "op", "via", "confidence", "line", "depth", "via_chain", "evidence")},
             "snippet": "\n".join(snippet_lines[:12]) + ("\n..." if len(snippet_lines) > 12 else ""),
         }
 
+    @_consistent_read(refresh=True)
     def data_access(self, object_name: str, limit: int | None = None, offset: int = 0,
                     confidence: str | None = None) -> dict:
         if offset < 0 or (limit is not None and limit < 1):
             raise ValueError("limit must be positive and offset nonnegative")
         if confidence is not None and confidence not in ('confirmed', 'probable', 'uncertain'):
             raise ValueError("confidence must be confirmed, probable or uncertain")
-        self._ensure()
         res = dataflow.data_access(self.conn, object_name)
         if not res['found']:
             return res
@@ -459,8 +517,8 @@ class CodebaseTools:
         return out[:8]
 
     # ------------------------------------------------------------------ Tool 2
+    @_consistent_read(refresh=True)
     def symbol_relations(self, symbol_name: str, relation_direction: str = "both") -> dict:
-        self._ensure()
         if relation_direction not in ("upstream", "downstream", "both"):
             raise ValueError("relation_direction must be 'upstream', 'downstream' or 'both'")
         conn = self.conn
@@ -627,6 +685,7 @@ class CodebaseTools:
         return {"base_types": bases, "uses_types": sorted(used.values(), key=lambda u: u["first_line"])[:60]}
 
     # ------------------------------------------------------------------ Tool 3
+    @_consistent_read(refresh=True)
     def optimized_context(self, file_path: str, focus_lines: list[int], padding_lines: int = 15) -> dict:
         abs_path = os.path.abspath(os.path.join(self.root, file_path))
         allowed = [self.root, *extra_roots(self.root)]
@@ -640,45 +699,64 @@ class CodebaseTools:
 
         from .core import decode_bytes  # local import to avoid cycles at module load
 
-        pad_ranges = sorted((max(1, int(l) - pad), int(l) + pad) for l in focus_lines if int(l) >= 1)
+        focuses = sorted({int(line) for line in focus_lines if int(line) >= 1})
+        if not focuses:
+            raise ValueError('focus_lines must contain positive line numbers')
+        pad_ranges = [(max(1, line - pad), line + pad) for line in focuses]
         wanted: dict[int, str] = {}
         total = 0
-        # stream line by line: never loads a whole (possibly huge) file into memory
-        with open(abs_path, "rb") as f:
-            for total, raw in enumerate(f, start=1):
+        with open(abs_path, 'rb') as stream:
+            for total, raw in enumerate(stream, start=1):
                 if any(a <= total <= b for a, b in pad_ranges):
-                    wanted[total] = decode_bytes(raw.rstrip(b"\r\n"))
-        lines = wanted
-
-        ranges = sorted((a, min(total, b)) for a, b in pad_ranges)
-        merged: list[list[int]] = []
-        for s, e in ranges:
-            if merged and s <= merged[-1][1] + 1:
-                merged[-1][1] = max(merged[-1][1], e)
-            else:
-                merged.append([s, e])
+                    wanted[total] = decode_bytes(raw.rstrip(b'\r\n'))
+        if not any(line <= total for line in focuses):
+            raise ValueError('All focus lines are outside the file')
 
         width = len(str(total))
-        parts, size, truncated = [], 0, False
-        for s, e in merged:
-            block = "\n".join(f"{n:>{width}} | {lines.get(n, '')}" for n in range(s, e + 1))
-            if size + len(block) > MAX_CONTEXT_CHARS:
-                truncated = True
-                break
-            parts.append(block)
-            size += len(block)
-
+        selected = {}
+        clipped = []
+        remaining = MAX_CONTEXT_CHARS
+        separator = '\n   ...\n'
+        # Reserve enough space for separators even when selected lines are disjoint.
+        overhead = len(separator) + 1
+        valid_focuses = [line for line in focuses if line in wanted]
+        for i, line in enumerate(valid_focuses):
+            text = f"{line:>{width}} | {wanted[line]}"
+            allowance = max(0, remaining // (len(valid_focuses) - i) - overhead)
+            if len(text) > allowance:
+                clipped.append(line)
+                marker = ' ... [line truncated]'
+                text = text[:max(0, allowance - len(marker))] + marker[:allowance]
+            if text:
+                selected[line] = text
+                remaining -= len(text) + overhead
+        neighbors = sorted((n for n in wanted if n not in selected),
+                           key=lambda n: (min(abs(n - line) for line in valid_focuses), n))
+        for line in neighbors:
+            text = f"{line:>{width}} | {wanted[line]}"
+            if len(text) + overhead <= remaining:
+                selected[line] = text
+                remaining -= len(text) + overhead
+        merged = []
+        for line in sorted(selected):
+            if merged and line == merged[-1][1] + 1:
+                merged[-1][1] = line
+            else:
+                merged.append([line, line])
+        parts = ['\n'.join(selected[n] for n in range(a, b + 1)) for a, b in merged]
+        truncated = bool(clipped) or len(selected) < len(wanted)
         symbols = [
             {"symbol": r["qualified_name"], "type": r["symbol_type"], "start_line": r["start_line"], "end_line": r["end_line"]}
             for r in self.conn.execute(
                 "SELECT * FROM symbols WHERE file_path=? AND symbol_type != 'namespace' AND start_line<=? AND end_line>=? "
                 "ORDER BY (end_line-start_line) LIMIT 5",
-                (file_path.replace("\\", "/"), max(int(l) for l in focus_lines), min(int(l) for l in focus_lines)))
+                (file_path.replace("\\", "/"), max(valid_focuses), min(valid_focuses)))
         ]
         return {
             "file_path": file_path, "total_lines": total, "ranges": merged,
             "enclosing_symbols": symbols, "truncated": truncated,
-            "context": "\n   ...\n".join(parts),
+            "omitted_lines": len(wanted) - len(selected), "truncated_lines": clipped,
+            "context": separator.join(parts),
         }
 
     # ------------------------------------------------------------------ impact of a change
@@ -687,6 +765,7 @@ class CodebaseTools:
         return analyze_impact(self, base)
 
     # ------------------------------------------------------------------ Tool 4
+    @_consistent_read()
     def index_status(self) -> dict:
         """Report how trustworthy the index is. Never refreshes the index itself."""
         conn = self.conn
@@ -708,6 +787,8 @@ class CodebaseTools:
         head_moved = bool(git_now and git_then and git_now["commit"] != git_then["commit"])
 
         problems = self._consistency_problems()
+        if meta('indexing') == '1':
+            problems.append('Previous indexing run was interrupted; run index to recover.')
         last = meta("last_indexed_at")
 
         outdated_format = bool(indexed) and meta("index_version") != dbmod.INDEX_VERSION
@@ -729,6 +810,7 @@ class CodebaseTools:
             "root": self.root,
             "embedder": meta("embedder"),
             "index_version": meta("index_version"),
+            "index_revision": meta("index_revision"),
             "index_format_outdated": outdated_format,
             "last_indexed_at": int(last) if last else None,
             "indexed_files": len(indexed),
@@ -776,6 +858,7 @@ class CodebaseTools:
         return [f"{n} {label}" for label, sql in checks if (n := one(sql))]
 
     # ------------------------------------------------------------------ misc
+    @_consistent_read()
     def stats(self) -> dict:
         c = self.conn
         langs = {r[0]: r[1] for r in c.execute("SELECT language, COUNT(*) FROM files GROUP BY language")}
@@ -812,10 +895,21 @@ def render_search(res: dict) -> str:
             chain = f' via {" > ".join(da["via_chain"])}' if da["via_chain"] else ""
             out.append(f'    data access: {da["access"]}/{da["op"]} {da["target"]} '
                        f'[{da["confidence"]}, {da["via"]}] line {da["line"]}{chain}')
+        if r.get('explanation'):
+            why = r['explanation']
+            out.append('    matched query terms: ' + (', '.join(why['matched_query_terms']) or '(none)'))
+            for layer, score in why['layers'].items():
+                out.append(f"    {layer}: rank {score['rank']}, RRF contribution {score['rrf_contribution']:.8f}")
+            for item in why['matched_expansions']:
+                origins = ', '.join(source['source'] for source in item['sources'])
+                out.append(f"    expansion: {item['term']} -> {', '.join(item['matched_terms'])} ({origins})")
+            if why.get('routing') and why['routing'].get('evidence'):
+                out.append('    evidence: ' + why['routing']['evidence'][:240])
         out.extend("    " + ln for ln in r["snippet"].split("\n"))
     page = res.get('pagination', {})
     if page.get('has_more'):
-        out.append(f"More results: --offset {page['next_offset']} (MCP: offset={page['next_offset']})")
+        out.append(f"More results: --cursor {page['next_cursor']}" if page.get('next_cursor') else
+                   f"More results: --offset {page['next_offset']}")
     if res["related_files"]:
         out.append("Related files (dependency graph):")
         for rf in res["related_files"]:
