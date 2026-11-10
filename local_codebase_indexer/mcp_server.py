@@ -7,12 +7,20 @@ import sqlite3
 import sys
 
 from . import __version__
-from .query import (CodebaseTools, render_context, render_data_access, render_impact, render_relations, render_search,
-                    render_status, render_doctor)
+from .query import (
+    CodebaseTools,
+    render_context,
+    render_data_access,
+    render_doctor,
+    render_impact,
+    render_relations,
+    render_search,
+    render_status,
+)
 
 PROTOCOL_VERSION = "2024-11-05"
 
-TOOLS = [
+TOOLS: list[dict] = [
     {
         "name": "codebase_semantic_search",
         "description": "Find code from a description when you do not know the identifiers (Chinese or English; hybrid keyword + symbol + vector search). For an exact identifier or string literal, plain grep is faster and complete.",
@@ -165,7 +173,7 @@ def handle(tools: CodebaseTools, msg) -> dict | None:
         return err(-32601, f'method not found: {method}')
     name = params.get('name')
     spec = next((t for t in TOOLS if t['name'] == name), None)
-    if spec is None:
+    if spec is None or not isinstance(name, str):
         return err(-32602, 'unknown tool')
     try:
         args = params.get('arguments', {})
@@ -188,7 +196,7 @@ def serve(root: str) -> int:
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
-                resp = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'parse error'}}
+                resp: dict | None = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'parse error'}}
             else:
                 resp = handle(tools, msg)
             if resp is not None:

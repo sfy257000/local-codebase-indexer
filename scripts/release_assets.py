@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import argparse
 import ast
-from email.parser import BytesParser
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
 import tarfile
-from urllib.parse import quote
 import zipfile
+from email.parser import BytesParser
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 
 def version_from_source(data: bytes) -> str:

@@ -1,4 +1,4 @@
-include server.json CHANGELOG.md README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md requirements.txt
+include server.json CHANGELOG.md README*.md TODO.md AGENTS.md CLAUDE.md llms.txt index.md
 graft scripts
 graft tests
 graft plugins

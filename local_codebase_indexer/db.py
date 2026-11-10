@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS index_failures (
 """
 
 # Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
-INDEX_VERSION = "8"
+INDEX_VERSION = "9"
 
 
 def index_dir(root: str) -> str:

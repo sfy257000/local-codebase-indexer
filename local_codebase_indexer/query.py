@@ -1,34 +1,56 @@
-"""Hybrid query pipeline and the three tools from index.md section 4."""
+"""Query facade, hybrid search, index health, and data-access orchestration."""
 
 from __future__ import annotations
 
-import os
-import fnmatch
 import difflib
+import fnmatch
+import os
 import re
 import sqlite3
 import textwrap
 import time
-from functools import wraps
 from collections import defaultdict
 
 import numpy as np
 
 from . import __version__, dataflow
 from . import db as dbmod
-from .callgraph import CONF_ORDER
+from .context import MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS
+from .context import ContextTools
 from .core import Indexer, cjk_bigrams, git_info
-from .scanner import ScanReport, explain_path, extra_roots, iter_files
 from .embedder import split_identifier
-from .synonyms import Expander
 from .pagination import decode_cursor, encode_cursor, search_key
+from .query_common import _consistent_read
+from .relations import RelationTools
+from .rendering import (
+    render_context as render_context,
+)
+from .rendering import (
+    render_data_access as render_data_access,
+)
+from .rendering import (
+    render_doctor as render_doctor,
+)
+from .rendering import (
+    render_impact as render_impact,
+)
+from .rendering import (
+    render_relations as render_relations,
+)
+from .rendering import (
+    render_search as render_search,
+)
+from .rendering import (
+    render_status as render_status,
+)
+from .scanner import ScanReport, explain_path, iter_files
+from .synonyms import Expander
 
 RRF_K = 60
 RECHECK_SECONDS = 15  # a long-lived server re-checks the index at most this often
 _STARTED = time.time()  # when this process loaded the package
 # the symbol-name layer is a weak signal (substring match), so it counts for less
 LAYER_WEIGHTS = {"keyword": 1.0, "vector": 1.0, "symbol": 0.5}
-MAX_CONTEXT_CHARS = 24000
 _TYPE_KINDS = ("class", "interface", "struct", "record", "enum", "type")
 _STOPWORDS = {
     "the", "a", "an", "of", "to", "in", "is", "are", "for", "and", "or", "where", "do", "we", "how",
@@ -65,12 +87,6 @@ def _server_info() -> dict:
     return {"version": __version__, "code_changed_since_start": changed}
 
 
-def _inside(path: str, base: str) -> bool:
-    try:
-        return os.path.commonpath([path, base]) == base
-    except ValueError:  # different drives on Windows
-        return False
-
 
 def _has_word(term: str, text: str) -> bool:
     """True if ``term`` equals the text or one of its camelCase / snake_case / path words."""
@@ -86,19 +102,9 @@ def _has_word(term: str, text: str) -> bool:
     return term in words
 
 
-def _consistent_read(*, refresh: bool = False):
-    def decorate(method):
-        @wraps(method)
-        def wrapped(self, *args, **kwargs):
-            if refresh:
-                self._ensure()
-            with dbmod.read_snapshot(self.conn, self.indexer.db_path):
-                return method(self, *args, **kwargs)
-        return wrapped
-    return decorate
 
 
-class CodebaseTools:
+class CodebaseTools(RelationTools, ContextTools):
     """Facade exposing codebase_semantic_search / get_symbol_relations / get_optimized_context."""
 
     def __init__(self, root: str, auto_refresh: bool = True, embedder=None, db_path: str | None = None):
@@ -235,7 +241,7 @@ class CodebaseTools:
                 top = np.argsort(-sims, kind='stable')
                 ranked["vector"] = [int(ids[i]) for i in top if sims[i] > 0]
 
-        layer_scores = {}
+        layer_scores: dict[int, dict] = {}
         fused: dict[int, float] = defaultdict(float)
         via: dict[int, list[str]] = defaultdict(list)
         for name, lst in ranked.items():
@@ -334,18 +340,18 @@ class CodebaseTools:
                             f"AND gram IN ({','.join('?' * len(grams))}) ORDER BY n DESC, gram", (term, *grams))]
                         sources.append({'source': 'mined_comments', 'word': term, 'evidence': evidence})
                     expansions.append({'term': term, 'matched_terms': matches, 'sources': sources})
-                detail = {'matched_query_terms': matched, 'matched_expansions': expansions,
+                detail: dict = {'matched_query_terms': matched, 'matched_expansions': expansions,
                           'layers': layer_scores.get(row['rowid'], {}) if row else {},
                           'note': 'Ranks and matched terms explain retrieval; scores are not probabilities.'}
                 if result.get('data_access'):
                     detail['routing'] = result['data_access']
                     detail['note'] += ' Data-access routing takes precedence over the hybrid layer scores.'
                 result['explanation'] = detail
-        hints = []
+        hints: list[str] = []
         suggestions = []
         if not results:
-            names = [r[0] for r in self.conn.execute("SELECT DISTINCT symbol_name FROM symbols")]
-            suggestions = difflib.get_close_matches(query, names, n=5, cutoff=0.45)
+            symbol_names = [r[0] for r in self.conn.execute("SELECT DISTINCT symbol_name FROM symbols")]
+            suggestions = difflib.get_close_matches(query, symbol_names, n=5, cutoff=0.45)
             hints = ["Run doctor --path <file> to explain missing files.",
                      "Try an identifier or fewer words; remove file/language filters to widen the search."]
         return {"query": query, "results": results,
@@ -456,7 +462,7 @@ class CodebaseTools:
             return res
         sections = {}
         groups = [(res, k, k) for k in ('readers', 'writers', 'executed_by', 'mapped_by', 'possible',
-                                        'programs', 'no_known_caller')]
+                                        'programs', 'no_known_caller', 'schema_changes')]
         groups += [(res['touches'], k, 'touches.' + k) for k in res.get('touches', {})]
         for container, key, label in groups:
             entries = container[key]
@@ -515,249 +521,6 @@ class CodebaseTools:
             out.append({"file_path": p, "relations": sorted(rels), "types": types})
         out.sort(key=lambda d: (-len(d["relations"]), d["file_path"]))
         return out[:8]
-
-    # ------------------------------------------------------------------ Tool 2
-    @_consistent_read(refresh=True)
-    def symbol_relations(self, symbol_name: str, relation_direction: str = "both") -> dict:
-        if relation_direction not in ("upstream", "downstream", "both"):
-            raise ValueError("relation_direction must be 'upstream', 'downstream' or 'both'")
-        conn = self.conn
-        # "Type.Method" or a full qualified name narrows overloaded names such as InsertAsync to one class
-        if "." in symbol_name:
-            defs = conn.execute(
-                "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' "
-                "AND (qualified_name=? OR qualified_name LIKE ?) ORDER BY file_path, start_line LIMIT 8",
-                (symbol_name.rsplit(".", 1)[1], symbol_name, "%." + symbol_name),
-            ).fetchall()
-        else:
-            defs = conn.execute(
-                "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' ORDER BY file_path, start_line LIMIT 8",
-                (symbol_name,),
-            ).fetchall()
-        if not defs:
-            like = conn.execute(
-                "SELECT DISTINCT symbol_name FROM symbols WHERE symbol_name LIKE ? LIMIT 10", (f"%{symbol_name}%",)
-            ).fetchall()
-            return {"symbol": symbol_name, "definitions": [], "suggestions": [r[0] for r in like]}
-
-        type_defs: dict[str, list[sqlite3.Row]] = defaultdict(list)
-        for r in conn.execute(
-            f"SELECT * FROM symbols WHERE symbol_type IN ({','.join('?' * len(_TYPE_KINDS))})", _TYPE_KINDS
-        ):
-            type_defs[r["symbol_name"]].append(r)
-
-        out_defs = []
-        for d in defs:
-            entry = {
-                "id": d["id"], "file_path": d["file_path"], "type": d["symbol_type"],
-                "qualified_name": d["qualified_name"], "start_line": d["start_line"],
-                "end_line": d["end_line"], "signature": d["signature"],
-            }
-            if relation_direction in ("upstream", "both"):
-                entry["upstream"] = self._upstream(d)
-            if relation_direction in ("downstream", "both"):
-                entry["downstream"] = self._downstream(d, type_defs)
-            out_defs.append(entry)
-        return {
-            "symbol": symbol_name, "definitions": out_defs,
-            "note": ("C# method calls are resolved by receiver type (confirmed / probable / candidate); type references and "
-                 "fields remain identifier-name matches; inheritance edges come from the AST"),
-        }
-
-    def _type_upstream(self, d: sqlite3.Row) -> dict:
-        name = d["symbol_name"]
-        conn = self.conn
-        inheritors = [
-            {"symbol": r["qualified_name"], "type": r["symbol_type"], "file_path": r["file_path"], "line": r["start_line"]}
-            for r in conn.execute(
-                "SELECT s.* FROM raw_refs r JOIN symbols s ON s.id = r.owner WHERE r.kind='base' AND r.name=? "
-                "ORDER BY s.file_path, s.start_line LIMIT 40", (name,))
-        ]
-        refs = []
-        for r in conn.execute(
-            "SELECT r.file_path, r.line, r.owner, s.qualified_name AS user_symbol FROM raw_refs r "
-            "LEFT JOIN symbols s ON s.id = r.owner WHERE r.kind='ident' AND r.name=? "
-            "ORDER BY r.file_path, r.line LIMIT 200", (name,)):
-            if r["file_path"] == d["file_path"] and d["start_line"] <= r["line"] <= d["end_line"]:
-                continue  # inside the definition itself
-            refs.append({"file_path": r["file_path"], "line": r["line"], "in_symbol": r["user_symbol"]})
-        up = {"inheritors_or_implementers": inheritors, "referenced_by": refs[:60], "referenced_by_total": len(refs)}
-        if d["symbol_type"] in _TYPE_KINDS:
-            up["instantiated_by"] = self._callers(
-                "c.callee_id IN (SELECT id FROM symbols WHERE id=? OR (parent_id=? AND symbol_type='constructor'))",
-                (d["id"], d["id"]))[0]
-        return up
-
-    _METHOD_KINDS = ("method", "constructor", "operator")
-    _SQL_KINDS = ("procedure", "view", "function", "table")
-
-    def _callers(self, where: str, params: tuple, limit: int = 200) -> tuple[list[dict], int]:
-        order = "CASE c.confidence WHEN 'confirmed' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END, c.file_path, c.line"
-        base = f"FROM calls c JOIN symbols s ON s.id = c.caller_id WHERE {where}"
-        total = self.conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
-        rows = self.conn.execute(
-            f"SELECT s.qualified_name, s.symbol_type, c.file_path, c.line, c.confidence, c.reason {base} "
-            f"ORDER BY {order} LIMIT ?", (*params, limit)).fetchall()
-        return ([{"symbol": r["qualified_name"], "type": r["symbol_type"], "file_path": r["file_path"],
-                  "line": r["line"], "confidence": r["confidence"], "reason": r["reason"]} for r in rows], total)
-
-    def _upstream(self, d: sqlite3.Row) -> dict:
-        kind = d["symbol_type"]
-        if kind in self._METHOD_KINDS:
-            callers, total = self._callers("c.callee_id=?", (d["id"],))
-            impls = []
-            parent = self.conn.execute("SELECT * FROM symbols WHERE id=?", (d["parent_id"],)).fetchone() if d["parent_id"] else None
-            if parent is not None and parent["symbol_type"] == "interface":
-                impls = [{"symbol": r["qualified_name"], "file_path": r["file_path"], "line": r["start_line"]}
-                         for r in self.conn.execute(
-                    "SELECT m.* FROM raw_refs r JOIN symbols m ON m.parent_id = r.owner "
-                    "WHERE r.kind='base' AND r.name=? AND m.symbol_name=? AND m.symbol_type='method' "
-                    "ORDER BY m.file_path, m.start_line", (parent["symbol_name"], d["symbol_name"]))]
-            return {"callers": callers, "callers_total": total, "implementations": impls,
-                    "inheritors_or_implementers": [], "referenced_by": [], "referenced_by_total": 0}
-        if kind in self._SQL_KINDS:
-            res = dataflow.data_access(self.conn, d["symbol_name"])
-            callers = []
-            for label, key in (("writes", "writers"), ("reads", "readers"), ("executes", "executed_by"), ("maps", "mapped_by")):
-                for e in res.get(key, []):
-                    callers.append({"symbol": e["source"], "type": e["source_type"], "file_path": e["file_path"],
-                                    "line": e["line"], "confidence": e["confidence"],
-                                    "reason": f'{label} ({e["op"]}, {e["via"]})' + (
-                                        f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else "")})
-            return {"callers": callers[:200], "callers_total": len(callers), "implementations": [],
-                    "inheritors_or_implementers": [], "referenced_by": [], "referenced_by_total": 0}
-        return self._type_upstream(d)
-
-    def _downstream(self, d: sqlite3.Row, type_defs: dict) -> dict:
-        kind = d["symbol_type"]
-        conn = self.conn
-        if kind in self._METHOD_KINDS:
-            order = "CASE c.confidence WHEN 'confirmed' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END"
-            calls = [{"symbol": r["qualified_name"], "type": r["symbol_type"], "file_path": r["file_path"],
-                      "line": r["line"], "callee_line": r["start_line"], "confidence": r["confidence"],
-                      "reason": r["reason"]}
-                     for r in conn.execute(
-                "SELECT s.qualified_name, s.symbol_type, s.file_path, s.start_line, c.line, c.confidence, c.reason "
-                f"FROM calls c JOIN symbols s ON s.id = c.callee_id WHERE c.caller_id=? ORDER BY c.line, {order}",
-                (d["id"],))]
-            down = self._type_downstream(d, type_defs)
-            down["calls"] = calls
-            down["data_access"] = self._own_data_access(d["id"])
-            return down
-        if kind in ("procedure", "view", "function"):
-            res = dataflow.data_access(conn, d["symbol_name"])
-            t = res.get("touches", {})
-            down = {"base_types": [], "uses_types": [], "calls": [], "data_access": []}
-            for key in ("writes", "reads", "executes", "dynamic_sql"):
-                for e in t.get(key, []):
-                    down["data_access"].append({
-                        "target": e["target"], "access": e["access"], "op": e["op"], "via": e["via"],
-                        "confidence": e["confidence"], "line": e["line"], "file_path": e["file_path"],
-                        "via_chain": e["via_chain"]})
-            return down
-        return self._type_downstream(d, type_defs)
-
-    def _own_data_access(self, symbol_id: str) -> list[dict]:
-        return [{"target": r["target_name"], "access": r["access"], "op": r["op"], "via": r["via"],
-                 "confidence": r["confidence"], "line": r["line"], "file_path": r["file_path"], "via_chain": []}
-                for r in self.conn.execute(
-            "SELECT * FROM data_access WHERE source_id=? ORDER BY line", (symbol_id,))]
-
-    def _type_downstream(self, d: sqlite3.Row, type_defs: dict) -> dict:
-        conn = self.conn
-        bases = []
-        for r in conn.execute("SELECT name FROM raw_refs WHERE kind='base' AND owner=?", (d["id"],)):
-            targets = [{"file_path": t["file_path"], "line": t["start_line"], "type": t["symbol_type"]}
-                       for t in type_defs.get(r["name"], [])]
-            bases.append({"name": r["name"], "defined_in": targets})
-        used: dict[str, dict] = {}
-        for r in conn.execute(
-            "SELECT name, MIN(line) AS line FROM raw_refs WHERE kind='ident' AND file_path=? "
-            "AND line BETWEEN ? AND ? GROUP BY name", (d["file_path"], d["start_line"], d["end_line"])):
-            nm = r["name"]
-            if nm == d["symbol_name"] or nm not in type_defs:
-                continue
-            used[nm] = {
-                "name": nm, "first_line": r["line"],
-                "defined_in": [{"file_path": t["file_path"], "line": t["start_line"], "type": t["symbol_type"]}
-                               for t in type_defs[nm][:5]],
-            }
-        return {"base_types": bases, "uses_types": sorted(used.values(), key=lambda u: u["first_line"])[:60]}
-
-    # ------------------------------------------------------------------ Tool 3
-    @_consistent_read(refresh=True)
-    def optimized_context(self, file_path: str, focus_lines: list[int], padding_lines: int = 15) -> dict:
-        abs_path = os.path.abspath(os.path.join(self.root, file_path))
-        allowed = [self.root, *extra_roots(self.root)]
-        if not any(_inside(abs_path, r) for r in allowed):
-            raise ValueError("file_path must stay inside the project root or an extra root")
-        if not os.path.isfile(abs_path):
-            raise FileNotFoundError(file_path)
-        if not focus_lines:
-            raise ValueError("focus_lines must contain at least one line number")
-        pad = max(0, int(padding_lines if padding_lines is not None else 15))
-
-        from .core import decode_bytes  # local import to avoid cycles at module load
-
-        focuses = sorted({int(line) for line in focus_lines if int(line) >= 1})
-        if not focuses:
-            raise ValueError('focus_lines must contain positive line numbers')
-        pad_ranges = [(max(1, line - pad), line + pad) for line in focuses]
-        wanted: dict[int, str] = {}
-        total = 0
-        with open(abs_path, 'rb') as stream:
-            for total, raw in enumerate(stream, start=1):
-                if any(a <= total <= b for a, b in pad_ranges):
-                    wanted[total] = decode_bytes(raw.rstrip(b'\r\n'))
-        if not any(line <= total for line in focuses):
-            raise ValueError('All focus lines are outside the file')
-
-        width = len(str(total))
-        selected = {}
-        clipped = []
-        remaining = MAX_CONTEXT_CHARS
-        separator = '\n   ...\n'
-        # Reserve enough space for separators even when selected lines are disjoint.
-        overhead = len(separator) + 1
-        valid_focuses = [line for line in focuses if line in wanted]
-        for i, line in enumerate(valid_focuses):
-            text = f"{line:>{width}} | {wanted[line]}"
-            allowance = max(0, remaining // (len(valid_focuses) - i) - overhead)
-            if len(text) > allowance:
-                clipped.append(line)
-                marker = ' ... [line truncated]'
-                text = text[:max(0, allowance - len(marker))] + marker[:allowance]
-            if text:
-                selected[line] = text
-                remaining -= len(text) + overhead
-        neighbors = sorted((n for n in wanted if n not in selected),
-                           key=lambda n: (min(abs(n - line) for line in valid_focuses), n))
-        for line in neighbors:
-            text = f"{line:>{width}} | {wanted[line]}"
-            if len(text) + overhead <= remaining:
-                selected[line] = text
-                remaining -= len(text) + overhead
-        merged = []
-        for line in sorted(selected):
-            if merged and line == merged[-1][1] + 1:
-                merged[-1][1] = line
-            else:
-                merged.append([line, line])
-        parts = ['\n'.join(selected[n] for n in range(a, b + 1)) for a, b in merged]
-        truncated = bool(clipped) or len(selected) < len(wanted)
-        symbols = [
-            {"symbol": r["qualified_name"], "type": r["symbol_type"], "start_line": r["start_line"], "end_line": r["end_line"]}
-            for r in self.conn.execute(
-                "SELECT * FROM symbols WHERE file_path=? AND symbol_type != 'namespace' AND start_line<=? AND end_line>=? "
-                "ORDER BY (end_line-start_line) LIMIT 5",
-                (file_path.replace("\\", "/"), max(valid_focuses), min(valid_focuses)))
-        ]
-        return {
-            "file_path": file_path, "total_lines": total, "ranges": merged,
-            "enclosing_symbols": symbols, "truncated": truncated,
-            "omitted_lines": len(wanted) - len(selected), "truncated_lines": clipped,
-            "context": separator.join(parts),
-        }
 
     # ------------------------------------------------------------------ impact of a change
     def impact(self, base: str | None = None) -> dict:
@@ -875,271 +638,3 @@ class CodebaseTools:
 
 
 # ---------------------------------------------------------------------- text rendering
-
-def render_search(res: dict) -> str:
-    out = [f'Search: "{res["query"]}"  ({len(res["results"])} results)']
-    if not res["results"]:
-        out.append("No matches.")
-        if res.get('suggestions'):
-            out.append("Similar symbols: " + ", ".join(res['suggestions']))
-        out.extend(res.get('hints', []))
-    for i, r in enumerate(res["results"], 1):
-        head = f'[{i}] {r["file_path"]}:{r["start_line"]}-{r["end_line"]}'
-        if r["symbol"]:
-            head += f'  {r["symbol_type"]} {r["symbol"]}'
-        out.append(f'{head}  (score {r["score"]}, via {"+".join(r["matched_by"])})')
-        if r["signature"]:
-            out.append(f'    sig: {r["signature"]}')
-        da = r.get("data_access")
-        if da:
-            chain = f' via {" > ".join(da["via_chain"])}' if da["via_chain"] else ""
-            out.append(f'    data access: {da["access"]}/{da["op"]} {da["target"]} '
-                       f'[{da["confidence"]}, {da["via"]}] line {da["line"]}{chain}')
-        if r.get('explanation'):
-            why = r['explanation']
-            out.append('    matched query terms: ' + (', '.join(why['matched_query_terms']) or '(none)'))
-            for layer, score in why['layers'].items():
-                out.append(f"    {layer}: rank {score['rank']}, RRF contribution {score['rrf_contribution']:.8f}")
-            for item in why['matched_expansions']:
-                origins = ', '.join(source['source'] for source in item['sources'])
-                out.append(f"    expansion: {item['term']} -> {', '.join(item['matched_terms'])} ({origins})")
-            if why.get('routing') and why['routing'].get('evidence'):
-                out.append('    evidence: ' + why['routing']['evidence'][:240])
-        out.extend("    " + ln for ln in r["snippet"].split("\n"))
-    page = res.get('pagination', {})
-    if page.get('has_more'):
-        out.append(f"More results: --cursor {page['next_cursor']}" if page.get('next_cursor') else
-                   f"More results: --offset {page['next_offset']}")
-    if res["related_files"]:
-        out.append("Related files (dependency graph):")
-        for rf in res["related_files"]:
-            t = f' [{", ".join(rf["types"])}]' if rf["types"] else ""
-            out.append(f'  {rf["file_path"]}{t}  <- {", ".join(rf["relations"])}')
-    return "\n".join(out)
-
-
-def render_relations(res: dict) -> str:
-    if not res["definitions"]:
-        msg = f'Symbol "{res["symbol"]}" not found.'
-        if res.get("suggestions"):
-            msg += " Similar: " + ", ".join(res["suggestions"])
-        return msg
-    out = []
-    for d in res["definitions"]:
-        out.append(f'{d["type"]} {d["qualified_name"]}  {d["file_path"]}:{d["start_line"]}-{d["end_line"]}')
-        if d.get("signature"):
-            out.append(f'  sig: {d["signature"]}')
-        up = d.get("upstream")
-        if up is not None:
-            out.append("  UPSTREAM (who depends on it)")
-            for x in up.get("callers", [])[:30]:
-                out.append(f'    [{x["confidence"]}] {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["line"]}  ({x["reason"]})')
-            if up.get("callers_total", 0) > 30:
-                out.append(f'    ... {up["callers_total"] - 30} more')
-            for x in up.get("implementations", []):
-                out.append(f'    implemented by {x["symbol"]}  {x["file_path"]}:{x["line"]}')
-            for x in up.get("instantiated_by", [])[:15]:
-                out.append(f'    [{x["confidence"]}] instantiated in {x["symbol"]}  {x["file_path"]}:{x["line"]}')
-            for x in up["inheritors_or_implementers"]:
-                out.append(f'    inherited/implemented by {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["line"]}')
-            for x in up["referenced_by"][:25]:
-                out.append(f'    referenced at {x["file_path"]}:{x["line"]}' + (f' in {x["in_symbol"]}' if x["in_symbol"] else ""))
-            if up["referenced_by_total"] > 25:
-                out.append(f'    ... {up["referenced_by_total"] - 25} more references')
-        down = d.get("downstream")
-        if down is not None:
-            out.append("  DOWNSTREAM (what it depends on)")
-            for x in down.get("calls", [])[:40]:
-                out.append(f'    [{x["confidence"]}] calls {x["type"]} {x["symbol"]}  {x["file_path"]}:{x["callee_line"]}'
-                           f'  (line {x["line"]}; {x["reason"]})')
-            for x in down.get("data_access", [])[:40]:
-                chain = f' via {" > ".join(x["via_chain"])}' if x.get("via_chain") else ""
-                out.append(f'    [{x["confidence"]}] {x["access"]}/{x["op"]} {x["target"]}  (line {x["line"]}; {x["via"]}){chain}')
-            for b in down["base_types"]:
-                where = ", ".join(f'{t["file_path"]}:{t["line"]}' for t in b["defined_in"]) or "external/unresolved"
-                out.append(f'    base/interface {b["name"]}  -> {where}')
-            for u in down["uses_types"][:30]:
-                where = ", ".join(f'{t["file_path"]}:{t["line"]}' for t in u["defined_in"])
-                out.append(f'    uses {u["name"]} (line {u["first_line"]})  -> {where}')
-    if res.get("note"):
-        out.append(f'note: {res["note"]}')
-    return "\n".join(out)
-
-
-def _da_line(e: dict) -> str:
-    chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
-    return (f'    [{e["confidence"]}] {e["source_type"]} {e["source"]}  {e["file_path"]}:{e["line"]}  '
-            f'{e["op"]} ({e["via"]}){chain}')
-
-
-def _more(n: int, shown: int, full: bool) -> str:
-    return f"    ... {n - shown} more" + ("" if full else " (detail=true / --full lists all)")
-
-
-def render_data_access(res: dict, full: bool = False) -> str:
-    """Five entries per section by default; full and paginated output never silently truncate."""
-    if not res["found"]:
-        msg = f'No table or procedure named "{res["object"]}" found.'
-        if res.get("suggestions"):
-            msg += " Similar: " + ", ".join(res["suggestions"])
-        return msg
-    out = [f'{res["kind"]} {res["object"]}']
-    for d in res["definitions"]:
-        out.append(f'  defined in {d["file_path"]}:{d["line"]}')
-    sections = [("WRITTEN BY", "writers"), ("READ BY", "readers"), ("EXECUTED BY", "executed_by"),
-                ("MAPPED BY (EF)", "mapped_by")]
-    cap = max([len(res.get(k, [])) for k in ('writers', 'readers', 'executed_by', 'mapped_by',
-                                                      'possible', 'no_known_caller')]
-                  + [len(v) for v in res.get('touches', {}).values()] + [5]) if full or res.get("pagination") else 5
-    for title, key in sections:
-        items = res[key]
-        if items:
-            out.append(f"  {title} ({len(items)})")
-            out.extend(_da_line(e) for e in items[:cap])
-            if len(items) > cap:
-                out.append(_more(len(items), cap, full))
-    if res.get("programs"):
-        out.append(f'  USED BY PROGRAMS ({len(res["programs"])})')
-        for p in res["programs"]:
-            out.append(f'    [{p["confidence"]}] {p["program"]}  {"/".join(p["access"])}  {p["file_path"]}  '
-                       f'({", ".join(p["actions"] if full or res.get("pagination") else p["actions"][:6])}{", ... (use --full)" if len(p["actions"]) > 6 and not full and not res.get("pagination") else ""})')
-            if p.get("pages"):
-                out.append(f'        pages: {", ".join(p["pages"] if full or res.get("pagination") else p["pages"][:5])}{" ... (use --full)" if len(p["pages"]) > 5 and not full and not res.get("pagination") else ""}')
-    roots = res.get("no_known_caller") or []
-    if roots:
-        out.append(f"  NO KNOWN CALLER - entry points (API, jobs, Main) or unresolved calls ({len(roots)})")
-        out.extend(f'    {r["symbol"]}  {"/".join(r["access"])}  {r["file_path"]}:{r["line"]}' for r in roots[:cap])
-        if len(roots) > cap:
-            out.append(_more(len(roots), cap, full))
-    t = res.get("touches")
-    if t:
-        for title, key in (("WRITES", "writes"), ("READS", "reads"), ("EXECUTES", "executes")):
-            if t[key]:
-                out.append(f"  {title} ({len(t[key])})")
-                for e in t[key][:cap]:
-                    chain = f' via {" > ".join(e["via_chain"])}' if e["via_chain"] else ""
-                    out.append(f'    [{e["confidence"]}] {e["target"]}  {e["file_path"]}:{e["line"]}  {e["op"]}{chain}')
-                if len(t[key]) > cap:
-                    out.append(_more(len(t[key]), cap, full))
-        if t["dynamic_sql"]:
-            out.append(f'  DYNAMIC SQL inside ({len(t["dynamic_sql"])}) - targets cannot be determined')
-            for e in t["dynamic_sql"][:(cap if full or res.get("pagination") else cap // 4 + 1)]:
-                out.append(f'    {e["file_path"]}:{e["line"]}  {e["evidence"][:100]}')
-            if not full and not res.get('pagination') and len(t['dynamic_sql']) > cap // 4 + 1:
-                out.append(_more(len(t['dynamic_sql']), cap // 4 + 1, False))
-    if res["possible"]:
-        out.append(f'  POSSIBLE (uncertain: dynamic SQL, EF SaveChanges on tracked entities) ({len(res["possible"])})')
-        out.extend(_da_line(e) for e in res["possible"][:(cap if full or res.get("pagination") else cap // 2 or 1)])
-    if not res.get('pagination') and not res['possible'] and not any(res[k] for _t, k in sections) and not (t and any(t[k] for k in ("reads", "writes", "executes"))):
-        out.append("  no recorded access")
-    page = res.get('pagination')
-    if page:
-        for section, info in page['sections'].items():
-            out.append(f"  {section}: {info['returned']} returned / {info['total']} total")
-            if info['next_offset'] is not None:
-                out.append(f"    more: --offset {info['next_offset']} --limit {page['limit']} (MCP: offset={info['next_offset']})")
-    if res['possible'] and not full and not page and len(res['possible']) > (cap // 2 or 1):
-        out.append(_more(len(res['possible']), cap // 2 or 1, False))
-    for n in res.get("notes", []) if full else []:
-        out.append(f"note: {n}")
-    return "\n".join(out)
-
-
-def render_impact(res: dict, full: bool = False) -> str:
-    cap = max(len(res['changed']), len(res['tables']), len(res['no_known_caller']), 15) if full else 15
-    out = [f'Impact of changes since {res["base"]}: {len(res["changed"])} changed symbols']
-    for c in res["changed"][:cap]:
-        lines = ", ".join(f"{a}-{b}" if a != b else str(a) for a, b in (c["lines"] if full else c["lines"][:4]))
-        out.append(f'  {c["type"]} {c["symbol"]}  {c["file_path"]}:{lines} [{c.get("snapshot", "current")}]')
-    if len(res["changed"]) > cap:
-        out.append(_more(len(res["changed"]), cap, full))
-    if res.get('removed_files'):
-        out.append('  removed files: ' + ', '.join(res['removed_files']))
-    if res.get('note'):
-        out.append('  ' + res['note'])
-    if res["unmapped_files"]:
-        out.append(f'  changed outside any symbol: {", ".join(res["unmapped_files"] if full else res["unmapped_files"][:10])}'
-                   + (" ... (use --full)" if len(res["unmapped_files"]) > 10 and not full else ""))
-    if res["tables"]:
-        tables: dict[str, set[str]] = defaultdict(set)
-        names: dict[str, str] = {}
-        for t in res["tables"]:  # SQL Server names are case-insensitive: SFC_MLot and SFC_Mlot are one table
-            names.setdefault(t["target"].lower(), t["target"])
-            tables[t["target"].lower()].add(t["access"])
-        out.append(f"  TABLES / PROCEDURES ACCESSED BY CHANGED CODE ({len(tables)})")
-        out.extend(f'    {names[k]}  {"/".join(sorted(acc))}' for k, acc in sorted(tables.items())[:cap])
-    if res["programs"]:
-        out.append(f'  AFFECTED PROGRAMS ({len(res["programs"])})')
-        for p in res["programs"]:
-            out.append(f'    [{p["confidence"]}] {p["program"]}  {p["file_path"]}  ({", ".join(p["actions"][:6])}'
-                       f'{", ..." if len(p["actions"]) > 6 else ""})')
-            if p.get("pages"):
-                out.append(f'        pages: {", ".join(p["pages"] if full or res.get("pagination") else p["pages"][:5])}{" ... (use --full)" if len(p["pages"]) > 5 and not full and not res.get("pagination") else ""}')
-    if res["no_known_caller"]:
-        out.append(f'  NO KNOWN CALLER ({len(res["no_known_caller"])})')
-        out.extend(f'    {r["symbol"]}  {r["file_path"]}:{r["line"]} [{r.get("snapshot", "current")}]' for r in res["no_known_caller"][:cap])
-    if not res["changed"] and not res["unmapped_files"]:
-        out.append("  no changes")
-    return "\n".join(out)
-
-
-def render_status(st: dict) -> str:
-    import datetime as _dt
-
-    when = _dt.datetime.fromtimestamp(st["last_indexed_at"]).strftime("%Y-%m-%d %H:%M:%S") if st["last_indexed_at"] else "never"
-    srv = st.get("server") or {}
-    out = [f'index state: {st["state"].upper()}   server: {srv.get("version", "?")}',
-           f'last indexed: {when}   files: {st["indexed_files"]}   symbols: {st["symbols"]}   chunks: {st["chunks"]}',
-           f'embedder: {st["embedder"]}   index version: {st["index_version"]}']
-    if srv.get("code_changed_since_start"):
-        out.append("warning: the indexer's code changed on disk after this process started; restart the MCP server "
-                   "(new Claude Code session) to run it")
-    g = st["git"]
-    if g["current"] is None and g["indexed"] is None:
-        out.append("git: not a git work tree")
-    else:
-        for label, info in (("indexed at", g["indexed"]), ("current   ", g["current"])):
-            if info:
-                out.append(f'git {label}: {info["commit"][:10]} ({info["branch"] or "?"}), {info["dirty_files"]} uncommitted paths')
-        if g["head_moved"]:
-            out.append("git: HEAD has moved since the last index update")
-    pc = st["pending_changes"]
-    for key, label in (("new_files", "new"), ("deleted_files", "deleted"), ("possibly_modified_files", "possibly modified")):
-        if pc[key]["count"]:
-            more = " ..." if pc[key]["count"] > len(pc[key]["examples"]) else ""
-            out.append(f'{label} since last update ({pc[key]["count"]}): ' + ", ".join(pc[key]["examples"]) + more)
-    if st["failed_files"]:
-        out.append(f'failed files ({len(st["failed_files"])}), not searchable until fixed:')
-        out.extend(f'  {f["file_path"]}: {f["error"]}' for f in st["failed_files"][:20])
-    if st["consistency"]["ok"]:
-        out.append("consistency: ok")
-    else:
-        out.append("consistency problems (run `index --force` to rebuild):")
-        out.extend("  " + p for p in st["consistency"]["problems"])
-    if st.get("index_format_outdated"):
-        out.append("index was built by an older version and will be rebuilt on the next update")
-    if st["state"] in ("stale", "not_indexed"):
-        out.append("hint: run `local-codebase-indexer index` (search/relations/context also refresh automatically)")
-    return "\n".join(out)
-
-
-def render_context(res: dict) -> str:
-    head = f'{res["file_path"]} ({res["total_lines"]} lines), ranges: ' + ", ".join(f"{a}-{b}" for a, b in res["ranges"])
-    if res["enclosing_symbols"]:
-        head += "\nenclosing: " + "; ".join(
-            f'{s["type"]} {s["symbol"]} ({s["start_line"]}-{s["end_line"]})' for s in res["enclosing_symbols"])
-    tail = "\n[truncated: output limit reached; request fewer or narrower ranges]" if res["truncated"] else ""
-    return head + "\n" + res["context"] + tail
-
-
-def render_doctor(res: dict) -> str:
-    out = [f"Project: {res['root']}", f"Indexable text files: {res['eligible_files']}",
-           f"Index state: {res['index']['state']}"]
-    for reason, count in sorted(res['counts'].items()):
-        out.append(f"  {reason}: {count}")
-        out.extend('    ' + path for path in res['examples'][reason][:3])
-    if res['path']:
-        out.append(f"{res['path']['path']}: {res['path']['reason']}")
-    out.extend(res['hints'])
-    out.append(res['note'])
-    return '\n'.join(out)

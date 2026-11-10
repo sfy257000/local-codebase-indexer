@@ -85,4 +85,6 @@ Relations show callers; impact compares Git snapshots; search combines identifie
 
 Found a wrong edge or missing result? Open a [reproducible issue](https://github.com/sfy257000/local-codebase-indexer/issues/new/choose). [Contributions](https://github.com/sfy257000/local-codebase-indexer/blob/main/CONTRIBUTING.md) are welcome. Licensed under [MIT](https://github.com/sfy257000/local-codebase-indexer/blob/main/LICENSE).
 
+[SQL / Unicode / VB6 support and upgrade notes](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/sql-legacy-support.md)
+
 <!-- mcp-name: io.github.sfy257000/local-codebase-indexer -->

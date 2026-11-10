@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -32,12 +32,17 @@ def main():
     (assets / 'demo-report.json').write_text(proc.stdout, encoding='utf-8')
     (assets / 'demo-output.txt').write_text(output + '\n', encoding='utf-8')
     lines = output.splitlines()
+    table_start = next(i for i, line in enumerate(lines) if line.startswith('table '))
+    access_end = next(i for i, line in enumerate(lines) if line.strip().startswith(('SCHEMA CHANGED BY', 'USED BY PROGRAMS')))
+    program_start = next(i for i, line in enumerate(lines) if line.strip().startswith('USED BY PROGRAMS'))
+    program_end = next(i for i, line in enumerate(lines[program_start:], program_start) if line.startswith('note:'))
+    checks_start = next(i for i, line in enumerate(lines) if line.startswith('Verified '))
     sections = [
         ('1 / 4  Start without a database', lines[:3] + ['', 'Question: which C# code and pages reach Sales_OrderHeader?']),
-        ('2 / 4  Find direct and indirect SQL access', lines[4:11]),
-        ('3 / 4  Follow C# calls to controller actions and a page', lines[11:15] + ['',
+        ('2 / 4  Find direct and indirect SQL access', lines[table_start:access_end]),
+        ('3 / 4  Follow C# calls to controller actions and a page', lines[program_start:program_end] + ['',
          'Confidence is shown in the CLI output.', 'Probable links need source verification.']),
-        ('4 / 4  Check the result, then try your project', lines[16:20] + ['', *lines[-2:]]),
+        ('4 / 4  Check the result, then try your project', lines[checks_start:checks_start + 4] + ['', *lines[-2:]]),
     ]
     font = ImageFont.truetype(args.font, 20)
     title_font = ImageFont.truetype(args.font, 24)

@@ -1,11 +1,11 @@
 """Bounded, process-safe coordination for a local index. No external lock service."""
 from __future__ import annotations
 
-from contextlib import contextmanager
 import errno
 import math
 import os
 import time
+from contextlib import contextmanager
 
 
 class IndexBusyError(ValueError):

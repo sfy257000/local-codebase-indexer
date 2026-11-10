@@ -14,8 +14,8 @@ from collections import defaultdict
 from . import __version__, dataflow
 from . import db as dbmod
 from .core import git
-from .locking import index_lock
 from .embedder import HashingEmbedder
+from .locking import index_lock
 
 _TYPES = {'class', 'interface', 'struct', 'record', 'enum', 'type', 'namespace'}
 
@@ -34,7 +34,8 @@ def _collect(tools, ranges: dict, snapshot: str) -> dict:
 
 
 def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
-    changed, unmapped = {}, []
+    changed: dict[str, dict] = {}
+    unmapped: list[str] = []
     for path, spans in sorted(ranges.items()):
         hit = False
         for a, b in spans:
@@ -54,12 +55,20 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
                 c['lines'].append([max(a, r['start_line']), min(b, r['end_line'])])
         if not hit:
             unmapped.append(path)
-    own = []
+    own: list[dict] = []
     for sid, c in changed.items():
         own.extend({'source': c['symbol'], 'target': r['target_name'], 'access': r['access'],
                     'op': r['op'], 'confidence': r['confidence'], 'file_path': r['file_path'],
-                    'line': r['line'], 'snapshot': snapshot}
+                    'line': r['line'], 'snapshot': snapshot, 'evidence': r['evidence']}
                    for r in tools.conn.execute("SELECT * FROM data_access WHERE source_id=? AND via != 'ef_raw'", (sid,)))
+    # Scripts often have no containing symbol (ALTER/DROP TABLE, seed SQL).
+    # Include their accesses by changed lines rather than losing them entirely.
+    for path, spans in ranges.items():
+        for row in tools.conn.execute("SELECT * FROM data_access WHERE file_path=? AND source_id IS NULL", (path,)):
+            if any(start <= row['line'] <= end for start, end in spans):
+                own.append({'source': path, 'target': row['target_name'], 'access': row['access'],
+                            'op': row['op'], 'confidence': row['confidence'], 'file_path': path,
+                            'line': row['line'], 'snapshot': snapshot, 'evidence': row['evidence']})
     entries = [{'source_id': c['id'], 'source_type': c['type'], 'access': 'change', 'confidence': 'confirmed'}
                for c in changed.values()]
     programs, roots = dataflow._programs(tools.conn, dataflow._Lookup(tools.conn), entries)
@@ -99,7 +108,10 @@ def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "befor
                     raise ValueError('invalid path in git archive')
                 if member.isfile():
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    with tar.extractfile(member) as src, open(dest, 'wb') as dst:
+                    src = tar.extractfile(member)
+                    if src is None:
+                        raise ValueError('Could not read a regular archive member')
+                    with src, open(dest, 'wb') as dst:
                         shutil.copyfileobj(src, dst)
         old = CodebaseTools(snapshot, embedder=HashingEmbedder())
         try:
@@ -112,11 +124,11 @@ def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "befor
             with tempfile.NamedTemporaryFile(dir=os.path.dirname(cache), suffix='.db', delete=False) as out:
                 completed = out.name
             try:
-                dest = sqlite3.connect(completed)
+                cache_conn = sqlite3.connect(completed)
                 try:
-                    old.conn.backup(dest)
+                    old.conn.backup(cache_conn)
                 finally:
-                    dest.close()
+                    cache_conn.close()
                 with index_lock(cache):
                     # Immutable cache entries must not be replaced while another reader uses WAL sidecars.
                     if not os.path.exists(cache):

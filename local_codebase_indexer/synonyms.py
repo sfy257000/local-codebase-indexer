@@ -11,8 +11,8 @@ Single-word (ASCII) triggers must match a whole word, CJK triggers match as subs
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import re
 
@@ -107,6 +107,8 @@ class Expander:
     def reload(self, force: bool = False) -> bool:
         payload = None
         try:
+            if self.root is None:
+                raise FileNotFoundError
             with open(os.path.join(index_dir(self.root), 'synonyms.json'), 'rb') as stream:
                 payload = stream.read()
                 version = hashlib.sha256(payload).hexdigest()

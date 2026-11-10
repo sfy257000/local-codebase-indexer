@@ -41,13 +41,14 @@ The stored-procedure and repository access entries are `confirmed`; the rolled-u
 
 ## Recorded result
 
-[`assets/demo-report.json`](../assets/demo-report.json) contains the complete report, environment, exact-reference baseline, confidence labels, and measured timings. [`demo-output.txt`](../assets/demo-output.txt) contains the full text output. These are one recorded run of version 0.8.0; rerunning produces different timings.
+[`assets/demo-report.json`](../assets/demo-report.json) contains the complete report, environment, exact-reference baseline, confidence labels, and measured timings. [`demo-output.txt`](../assets/demo-output.txt) contains the full text output. These are one recorded run of version 0.9.0; rerunning produces different timings.
 
 | Observation | Recorded value |
 |---|---|
 | Files indexed | 9, with 0 failed (8 C#/SQL/Razor source files and a README) |
 | Symbols / chunks | 29 / 23 |
 | Exact table-name reference files | 3 |
+| Schema operations | 1 `create_table`, separate from data writes |
 | SQL / C# access | 2 writers, including the indirect stored-procedure writer; 1 reader |
 | Program / page roll-up | `Orders` actions `Approve`, `Details`; `Views/Orders/Details.cshtml` |
 | Scenario checks | 4 / 4 pass |

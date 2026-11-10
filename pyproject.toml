@@ -40,7 +40,7 @@ dependencies = [
 
 [project.optional-dependencies]
 onnx = ["onnxruntime", "tokenizers"]
-dev = ["pytest"]
+dev = ["pytest", "ruff>=0.9", "mypy>=1.14"]
 media = ["Pillow>=10"]
 
 [project.scripts]
@@ -65,3 +65,14 @@ namespaces = false
 
 [tool.setuptools.package-data]
 local_codebase_indexer = ["demo_project/*.md", "demo_project/**/*.cs", "demo_project/**/*.sql", "demo_project/**/*.cshtml"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["local_codebase_indexer"]
+ignore_missing_imports = true

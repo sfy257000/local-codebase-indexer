@@ -84,3 +84,5 @@ local-codebase-indexer --root "/path/to/project" doctor
 - 先选一张已知用途的数据表核对结果。遗漏文件时运行 `doctor --path path/to/file.cs`，检查 `.gitignore` 和 `.ai_context/ignore`。更多[限制](docs/reference.zh-CN.md)与[待办](TODO.md)可查手册。
 
 发现错误关系或漏查，请附最小示例[提交 issue](https://github.com/sfy257000/local-codebase-indexer/issues/new/choose)。欢迎[贡献](CONTRIBUTING.md)。采用 [MIT 许可](LICENSE)。
+
+[SQL／Unicode／VB6 支援與升級說明](docs/sql-legacy-support.md)
