@@ -9,6 +9,8 @@ table Sales_OrderHeader
     [confirmed] method Shop.Data.OrderRepository.Approve  Data/OrderRepository.cs:24  update (csharp_sp) via usp_ApproveOrder
   READ BY (1)
     [confirmed] method Shop.Data.OrderRepository.Get  Data/OrderRepository.cs:19  select (csharp_sql)
+  SCHEMA CHANGED BY (1)
+    [confirmed] file Sql/Sales_OrderHeader.sql  Sql/Sales_OrderHeader.sql:1  create_table (sql)
   USED BY PROGRAMS (1)
     [probable] Orders  read/write  Controllers/OrdersController.cs  (Approve, Details)
         pages: Views/Orders/Details.cshtml
@@ -16,7 +18,7 @@ note: Static analysis: dynamic SQL is listed under 'possible' and cannot be reso
 
 Verified 4/4 expected relationships: PASS
 Exact table mentions: 3 files; controller/page reachability is computed separately.
-Local timing: index 16.2 ms; data-access 0.6 ms.
+Local timing: index 17.2 ms; data-access 0.6 ms.
 This fixture does not establish accuracy or time savings on your project.
 
 Try your project:

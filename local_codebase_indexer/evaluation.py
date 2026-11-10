@@ -5,10 +5,10 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import statistics
 import tempfile
 import time
+from pathlib import Path
 
 from . import __version__
 from . import db as dbmod
@@ -40,9 +40,9 @@ def validate_dataset(dataset: dict) -> list[dict]:
             if key in gold:
                 raise ValueError(f'queries[{i}] contains duplicate answers')
             gold.add(key)
-        for key in ('file_pattern', 'language'):
-            if key in item and (not isinstance(item[key], str) or not item[key].strip()):
-                raise ValueError(f'queries[{i}].{key} must be a nonempty string')
+        for setting in ('file_pattern', 'language'):
+            if setting in item and (not isinstance(item[setting], str) or not item[setting].strip()):
+                raise ValueError(f'queries[{i}].{setting} must be a nonempty string')
     return queries
 
 

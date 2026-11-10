@@ -2,7 +2,7 @@
   "version": 1,
   "description": "Curated navigation smoke questions about this repository's actual implementation. These are not collected user queries or an independent quality benchmark. Replace them with real questions from your own workflow.",
   "queries": [
-    {"id":"source-encoding","query":"Which function decodes source bytes using UTF-8, Big5 and cp1252?","language":"python","relevant":[{"file":"local_codebase_indexer/core.py","symbol":"decode_bytes"}]},
+    {"id":"source-encoding","query":"Which function decodes source bytes using UTF-8, Big5 and cp1252?","language":"python","relevant":[{"file":"local_codebase_indexer/textdecode.py","symbol":"decode_bytes"}]},
     {"id":"extension-language","query":"Map a file extension to its parser language","language":"python","relevant":[{"file":"local_codebase_indexer/scanner.py","symbol":"language_for"}]},
     {"id":"excluded-file","query":"Explain why a path is excluded by ignore rules or its parent directory","language":"python","relevant":[{"file":"local_codebase_indexer/scanner.py","symbol":"explain_path"}]},
     {"id":"mcp-validation","query":"Validate MCP arguments against their schema types and required properties","language":"python","relevant":[{"file":"local_codebase_indexer/mcp_server.py","symbol":"_validate"}]},

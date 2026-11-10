@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+- Fix a first-run Windows lock-file initialization race found by concurrent-process CI; serialize index ignore-file creation.
+
+- Fix SQL aliases `a` / `an` / `the`, parameterized TOP, UPDATE table hints, old NOLOCK hints, and comma sources after JOIN predicates.
+- Preserve bracketed/quoted identifiers and linked-server names, including spaces, backslashes, escaped delimiters, and quoted dots. Ignore keywords inside identifiers and nested block comments.
+- Exclude cursor FETCH and scalar TRIM FROM operands from table reads; analyze literal OPENQUERY SQL as uncertain.
+- Decode BOM-tagged UTF-16/UTF-32 before binary detection; make source context and freshness diagnostics consistent. True binary files no longer remain pending forever.
+- Attribute constant C# SQL to each executing method without sharing same-named constants across unrelated classes.
+- Add conservative VB6 SQL analysis for .frm/.bas/.cls, with enclosing method owners and explicit confidence levels.
+- Track table/index schema operations separately from row writes; include file-level SQL and before/after source evidence in Git impact.
+- Allow explicit project-ignore negations to include default build/dependency-named source directories, preserving hard exclusions for VCS and index state.
+- Split relation, context, and rendering code out of the query facade while preserving public imports and commands.
+- Clear the existing mypy errors; add Ruff/mypy CI and release gates; test Windows and Linux on Python 3.10, 3.12, and 3.13.
+- Canonical assistant instructions live in AGENTS.md; CLAUDE.md points there. Remove duplicate requirements.txt dependency declarations.
+- Index format 9 triggers one full rebuild after upgrade. See docs/sql-legacy-support.md for supported patterns and limitations.
+
 ## 0.8.0
 
 - MIT license and SPDX package metadata.

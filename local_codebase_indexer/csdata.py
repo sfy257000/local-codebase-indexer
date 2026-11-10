@@ -78,7 +78,18 @@ class _Extractor:
         spans.sort(key=lambda t: (t[0], t[1].start))
         self.spans = [s for _, s in spans]
         self.file_env: dict[str, _Cand] = {}
+        self.class_env: dict[str, dict[str, _Cand]] = {}
         self.cands: list[_Cand] = []
+
+    def _class_key(self, node) -> str:
+        names = []
+        while node is not None:
+            if node.type in {'class_declaration', 'struct_declaration', 'record_declaration', 'namespace_declaration'}:
+                name = node.child_by_field_name('name')
+                if name is not None:
+                    names.append(self.text(name))
+            node = node.parent
+        return '.'.join(reversed(names))
 
     # ---------------------------------------------------------------- helpers
     def text(self, n) -> str:
@@ -120,7 +131,7 @@ class _Extractor:
     @staticmethod
     def arg_exprs(arglist) -> list:
         """[(expression node, is_named_argument)] for an argument_list node."""
-        out = []
+        out: list[tuple] = []
         if arglist is None:
             return out
         for a in arglist.named_children:
@@ -174,7 +185,13 @@ class _Extractor:
             return (c.text, c.complete) if c else None
         if t == "member_access_expression":
             name = n.child_by_field_name("name")
-            c = self.file_env.get(self.text(name)) if name is not None else None
+            raw = self.text(n)
+            receiver = n.child_by_field_name('expression')
+            if receiver is not None and self.text(receiver) == 'this' and name is not None:
+                c = env.get(self.text(name))
+            else:
+                matches = [value for key, value in self.file_env.items() if key == raw or key.endswith('.' + raw)]
+                c = matches[0] if len(matches) == 1 else None
             return (c.text, c.complete) if c else None
         if t == "invocation_expression":
             c = self._builder_of(n, env)
@@ -264,7 +281,7 @@ class _Extractor:
     # ---------------------------------------------------------------- traversal
     def run(self, root) -> list[Access]:
         self._collect_file_consts(root)
-        env: dict[str, _Cand] = dict(self.file_env)
+        env: dict[str, _Cand] = {}
         stack: list = [("node", root)]
         while stack:
             kind, n = stack.pop()
@@ -275,7 +292,7 @@ class _Extractor:
                 continue
             if n.type in _SCOPES:
                 stack.append(("exit", (len(self.cands), n, env)))
-                env = dict(self.file_env)
+                env = dict(self.class_env.get(self._class_key(n), {}))
                 for c in reversed(n.children):
                     stack.append(("node", c))
                 continue
@@ -294,10 +311,13 @@ class _Extractor:
                 for d in _walk(n, "variable_declarator"):
                     ident, init = self._declarator(d)
                     if ident and init is not None and self._is_stringy(init):
-                        r = self.evaluate(init, self.file_env)
+                        owner = self._class_key(n)
+                        local = self.class_env.setdefault(owner, {})
+                        r = self.evaluate(init, local)
                         if r:
                             c = _Cand(r[0], r[1], self.line(init))
-                            self.file_env[ident] = c
+                            local[ident] = c
+                            self.file_env[owner + '.' + ident] = c
                             self.cands.append(c)
                 continue
             if n.type in _SCOPES:
@@ -395,6 +415,9 @@ class _Extractor:
         if expr.type in ("identifier", "invocation_expression"):
             c = env.get(self.text(expr)) if expr.type == "identifier" else self._builder_of(expr, env)
             if c is not None:
+                if any(c is value for value in self.file_env.values()):
+                    self.cands.append(_Cand(c.text, c.complete, self.line(expr), sink=True, proc_ok=first))
+                    return True
                 c.sink = True
                 c.proc_ok = c.proc_ok or first
                 return True

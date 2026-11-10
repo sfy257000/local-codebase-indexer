@@ -7,9 +7,16 @@ from dataclasses import dataclass, field
 
 from tree_sitter import Language, Parser
 
-from .csdata import extract_cs_accesses
 from .cscalls import extract_call_sites, member_info
-from .sqlaccess import extract_sql_accesses
+from .csdata import extract_cs_accesses
+from .sqlaccess import (
+    _NAME,
+    _matches,
+    _split_name,
+    _unquote,
+    extract_sql_accesses,
+    mask_sql,
+)
 
 MAX_CHUNK_LINES = 80
 SPLIT_LINES = 60
@@ -18,7 +25,7 @@ WINDOW_LINES = 50
 WINDOW_OVERLAP = 5
 
 CLASS_LIKE = {"class", "interface", "struct", "record", "enum", "type"}
-LEAF_TYPES = {"method", "constructor", "destructor", "property", "function", "indexer", "operator", "delegate", "event"}
+LEAF_TYPES = {"method", "constructor", "destructor", "property", "function", "indexer", "operator", "delegate", "event", "vb6_method"}
 
 
 @dataclass
@@ -74,20 +81,20 @@ def _load_parser(language: str) -> Parser | None:
     parser = None
     try:
         if language == "csharp":
-            import tree_sitter_c_sharp as m
-            lang = Language(m.language())
+            import tree_sitter_c_sharp as csharp_grammar
+            lang = Language(csharp_grammar.language())
         elif language == "python":
-            import tree_sitter_python as m
-            lang = Language(m.language())
+            import tree_sitter_python as python_grammar
+            lang = Language(python_grammar.language())
         elif language == "javascript":
-            import tree_sitter_javascript as m
-            lang = Language(m.language())
+            import tree_sitter_javascript as javascript_grammar
+            lang = Language(javascript_grammar.language())
         elif language == "typescript":
-            import tree_sitter_typescript as m
-            lang = Language(m.language_typescript())
+            import tree_sitter_typescript as ts_grammar
+            lang = Language(ts_grammar.language_typescript())
         elif language == "tsx":
-            import tree_sitter_typescript as m
-            lang = Language(m.language_tsx())
+            import tree_sitter_typescript as tsx_grammar
+            lang = Language(tsx_grammar.language_tsx())
         else:
             lang = None
         if lang is not None:
@@ -212,7 +219,8 @@ class _Walker:
                 cur_ns = _node_text(name, self.src) if name is not None else ns
                 self.add(ch, cur_ns, "namespace", None, "")
                 continue
-            handler(ch, parent, cur_ns, depth)
+            if handler is not None:
+                handler(ch, parent, cur_ns, depth)
 
     # -- C#
     _CS_CLASS = {
@@ -393,24 +401,29 @@ def _collect_refs(root, w: _Walker, language: str) -> None:
 
 _SQL_CREATE = re.compile(
     r"^\s*(?:create\s+(?:or\s+alter\s+)?(proc(?:edure)?|view|function|table)|alter\s+(proc(?:edure)?|view|function))"
-    r"\s+([\w\[\]\.\"`]+)",
+    rf"\s+({_NAME})",
     re.I | re.M,
 )
 
 
 def _parse_sql(lines: list[str], text: str, path: str) -> list[Symbol]:
     found = []
-    for m in _SQL_CREATE.finditer(text):
-        line = text.count("\n", 0, m.start()) + 1 + (1 if text[m.start()] == "\n" else 0)
+    masked = mask_sql(text)[0]
+    batch_ends = [i for i, line in enumerate(masked.splitlines(), 1)
+                  if re.fullmatch(r'\s*GO(?:\s+\d+)?\s*', line, re.I)]
+    for m in _matches(_SQL_CREATE, masked):
+        line = text.count("\n", 0, m.start(3)) + 1
         kind = (m.group(1) or m.group(2)).lower()
         kind = "procedure" if kind.startswith("proc") else kind
-        name = m.group(3).replace("[", "").replace("]", "").replace('"', "").replace("`", "")
-        found.append((line, kind, name))
+        parts = [_unquote(p) for p in _split_name(m.group(3))]
+        name = ".".join(parts)
+        found.append((line, kind, name, parts[-1]))
     syms = []
-    for i, (line, kind, name) in enumerate(found):
+    for i, (line, kind, name, short_name) in enumerate(found):
         end = (found[i + 1][0] - 1) if i + 1 < len(found) else len(lines)
+        end = next((batch - 1 for batch in batch_ends if line < batch <= end), end)
         syms.append(Symbol(
-            id=f"{path}#{kind}:{name}@{line}", name=name.split(".")[-1], qname=name, type=kind,
+            id=f"{path}#{kind}:{name}@{line}", name=short_name, qname=name, type=kind,
             parent_id=None, start=line, end=max(line, end),
             signature=" ".join(lines[line - 1].split())[:300],
         ))
@@ -528,15 +541,15 @@ def build_chunks(lines: list[str], symbols: list[Symbol], path: str) -> list[Chu
             j += 1
         seg_start, seg_end = i, j - 1
         if sum(1 for k in range(seg_start, seg_end + 1) if lines[k - 1].strip()) >= (5 if symbols else 1):
-            s = seg_start
-            while s <= seg_end:
-                e = min(seg_end, s + WINDOW_LINES - 1)
-                c = _make_chunk(lines, s, e, None, f"text {path}")
+            window_start = seg_start
+            while window_start <= seg_end:
+                e = min(seg_end, window_start + WINDOW_LINES - 1)
+                c = _make_chunk(lines, window_start, e, None, f"text {path}")
                 if c:
                     chunks.append(c)
                 if e >= seg_end:
                     break
-                s = e - WINDOW_OVERLAP + 1
+                window_start = e - WINDOW_OVERLAP + 1
         i = j
     chunks.sort(key=lambda c: (c.start, c.end))
     return chunks
@@ -553,6 +566,10 @@ def parse_file(language: str, text: str, path: str) -> ParseResult:
         result.symbols = _parse_sql(lines, text, path)
         result.accesses = _sql_file_accesses(lines, result.symbols)
         result.parsed_with = "regex"
+    elif path.lower().endswith(('.frm', '.bas', '.cls')):
+        from .vbdata import parse_vb6
+        result.symbols, result.accesses = parse_vb6(text, path, Symbol)
+        result.parsed_with = 'vb6-static'
     elif language in ("csharp", "python", "javascript", "typescript", "tsx"):
         parser = _load_parser(language)
         if parser is not None:

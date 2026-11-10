@@ -1,12 +1,12 @@
 """A bundled, synthetic first-success example; no database or .NET runtime needed."""
 from __future__ import annotations
 
-from importlib import resources
-from pathlib import Path
 import platform
 import re
 import tempfile
 import time
+from importlib import resources
+from pathlib import Path
 
 from . import __version__
 from .embedder import HashingEmbedder

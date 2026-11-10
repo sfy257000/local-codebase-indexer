@@ -1,11 +1,11 @@
 """Bounded, process-safe coordination for a local index. No external lock service."""
 from __future__ import annotations
 
-from contextlib import contextmanager
 import errno
 import math
 import os
 import time
+from contextlib import contextmanager
 
 
 class IndexBusyError(ValueError):
@@ -40,10 +40,9 @@ def index_lock(db_path: str, *, shared: bool = False):
     with open(path, 'a+b') as stream:
         if os.name == 'nt':
             import msvcrt
-            stream.seek(0, os.SEEK_END)
-            if stream.tell() == 0:
-                stream.write(b'\0')
-                stream.flush()
+            # Windows byte-range locks may extend beyond EOF. Do not seed an
+            # empty file before locking: another process can already own byte 0,
+            # making that initialization write fail with PermissionError.
             def acquire():
                 stream.seek(0)
                 msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)

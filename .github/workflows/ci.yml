@@ -7,11 +7,8 @@ jobs:
       PYTHONUTF8: "1"
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.12", "3.13"]
-        include:
-          - os: windows-latest
-            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,6 +17,16 @@ jobs:
       - run: pip install -e ".[dev,onnx]" onnx
       - run: python -c "import onnx, onnxruntime, tokenizers"
       - run: python -m pytest -q -rs
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m ruff check local_codebase_indexer scripts
+      - run: python -m mypy
   package:
     runs-on: ubuntu-latest
     steps:

@@ -10,16 +10,17 @@ import sqlite3
 import subprocess
 import time
 import uuid
-from contextlib import contextmanager
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from . import db as dbmod
 from .callgraph import resolve_calls
 from .embedder import get_embedder, split_identifier
 from .langparse import CLASS_LIKE, parse_file
-from .scanner import iter_files
 from .locking import IndexBusyError, index_lock, is_busy
+from .scanner import iter_files
+from .textdecode import decode_bytes, is_binary_data
 
 _TYPE_KINDS = tuple(CLASS_LIKE)
 
@@ -40,15 +41,6 @@ def _file_transaction(conn: sqlite3.Connection):
         conn.execute("RELEASE index_file")
         raise
     conn.execute("RELEASE index_file")
-
-
-def decode_bytes(data: bytes) -> str:
-    for enc in ("utf-8-sig", "big5", "cp1252"):
-        try:
-            return data.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace")
 
 
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
@@ -189,7 +181,7 @@ class Indexer:
                 changed = True
                 stats.warnings.append(f"{sf.rel_path}: {exc}")
                 continue
-            if b"\x00" in data[:8192]:
+            if is_binary_data(data):
                 seen.discard(sf.rel_path)  # drop any earlier entry for it
                 stats.skipped += 1
                 continue
@@ -566,7 +558,7 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
                 deps.add((r[0], t, "inheritance"))
 
     for r in conn.execute("SELECT DISTINCT file_path, name FROM raw_refs WHERE kind='ident'"):
-        targets = type_files.get(r[1])
+        targets = type_files.get(r[1], set())
         if targets and len(targets) <= 5:
             for t in targets:
                 if t != r[0]:

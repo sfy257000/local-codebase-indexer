@@ -184,3 +184,7 @@ python -m pytest -q
 ```
 
 <!-- mcp-name: io.github.sfy257000/local-codebase-indexer -->
+
+## SQL, Unicode, VB6, and schema updates
+
+See [0.9.0 support and upgrade notes](sql-legacy-support.md) for SQL fixes, VB6 confidence limits, separate schema operations, Unicode decoding, and explicit default-directory overrides. The first index update rebuilds format 9.

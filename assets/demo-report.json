@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "sample_kind": "synthetic",
-  "package_version": "0.8.0",
+  "package_version": "0.9.0",
   "scenario": "Trace Sales_OrderHeader to C# code, a controller, and a Razor page",
   "environment": {
     "python": "3.12.14",
@@ -22,8 +22,8 @@
     "warnings": []
   },
   "timing_ms": {
-    "index": 16.199,
-    "data_access": 0.565
+    "index": 17.207,
+    "data_access": 0.579
   },
   "literal_reference_files": [
     "Data/OrderRepository.cs",
@@ -100,6 +100,24 @@
     ],
     "executed_by": [],
     "mapped_by": [],
+    "schema_changes": [
+      {
+        "source": "Sql/Sales_OrderHeader.sql",
+        "source_type": "file",
+        "source_id": null,
+        "file_path": "Sql/Sales_OrderHeader.sql",
+        "line": 1,
+        "target": "Sales_OrderHeader",
+        "op": "create_table",
+        "access": "schema",
+        "via": "sql",
+        "confidence": "confirmed",
+        "evidence": "CREATE TABLE dbo.Sales_OrderHeader (",
+        "detail": "",
+        "depth": 0,
+        "via_chain": []
+      }
+    ],
     "possible": [],
     "programs": [
       {

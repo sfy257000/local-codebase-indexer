@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS index_failures (
 """
 
 # Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
-INDEX_VERSION = "8"
+INDEX_VERSION = "9"
 
 
 def index_dir(root: str) -> str:
@@ -165,11 +165,11 @@ def default_db_path(root: str) -> str:
 def connect(db_path: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     # keep the index out of version control
-    gi = os.path.join(os.path.dirname(db_path), ".gitignore")
-    if not os.path.exists(gi):
-        with open(gi, "w", encoding="utf-8") as f:
-            f.write("*\n")
     with index_lock(db_path):
+        gi = os.path.join(os.path.dirname(db_path), ".gitignore")
+        if not os.path.exists(gi):
+            with open(gi, "w", encoding="utf-8") as f:
+                f.write("*\n")
         conn = sqlite3.connect(db_path, timeout=timeout_seconds('INDEXER_BUSY_TIMEOUT', 5.0))
         conn.row_factory = sqlite3.Row
         try:

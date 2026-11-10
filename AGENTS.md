@@ -77,3 +77,13 @@ The package is `local_codebase_indexer/`. See `docs/reference.md` for design not
 ## First-run demo (0.8.0)
 
 Run `local-codebase-indexer demo` without a database or model. It uses a temporary bundled synthetic project, checks four relationships, and leaves the current project alone. `--output <new-or-empty-directory>` keeps a copy; `--json` returns evidence and timings. This is a supported-path demonstration, not a production accuracy or time-savings measurement.
+
+## SQL and legacy-source correctness (0.9.0)
+
+- Run `python -m ruff check local_codebase_indexer scripts`, `python -m mypy`, and the full pytest suite before publishing. CI covers Linux and Windows on Python 3.10, 3.12, and 3.13.
+- Dependency declarations live in `pyproject.toml`; `requirements.txt` was removed to avoid drift.
+- Source decoding and context extraction handle BOM-tagged UTF-16/UTF-32. True binary files are excluded consistently by scanning and status.
+- `data-access` has additive `schema_changes` entries (`access=schema`) for table/index DDL. They are not row writers. File-level SQL changes appear in impact with before/current/after labels and source evidence.
+- VB6 `.frm`/`.bas`/`.cls` SQL strings get procedure owners. Complete SQL at known ADO/DAO receivers may be confirmed; unknown receivers or incomplete concatenation remain probable/uncertain. No VB6 call graph or runtime execution proof is implied.
+- Explicit negations in `.ai_context/ignore` can include default source directories such as `!bin/` and `!bin/**`, overriding `.gitignore`. Include excluded parents first. `.git`, `.svn`, `.hg`, and `.ai_context` remain excluded.
+- Keep `query.py` as the facade/search implementation; navigation, source context, and rendering live in `relations.py`, `context.py`, and `rendering.py`. Legacy public imports from `query` remain supported.

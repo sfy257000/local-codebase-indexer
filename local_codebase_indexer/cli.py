@@ -127,8 +127,15 @@ def main(argv: list[str] | None = None) -> int:
     _fix_stdio(serving=args.cmd == "serve")
     root = os.path.abspath(args.root)
 
-    from .query import (render_context, render_data_access, render_impact, render_relations, render_search,
-                        render_status, render_doctor)
+    from .query import (
+        render_context,
+        render_data_access,
+        render_doctor,
+        render_impact,
+        render_relations,
+        render_search,
+        render_status,
+    )
 
     t = None
     try:
@@ -136,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             from .mcp_server import serve
             return serve(root)
         if args.cmd == "demo":
-            from .demo import run_demo, render_demo
+            from .demo import render_demo, run_demo
             res = run_demo(args.output)
             _emit(res, render_demo(res), args.json)
             return 0 if res['passed'] else 3

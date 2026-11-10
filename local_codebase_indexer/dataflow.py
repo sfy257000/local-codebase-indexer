@@ -14,9 +14,11 @@ import re
 import sqlite3
 from collections import deque
 
+from .sqlaccess import _split_name, _unquote
+
 MAX_DEPTH = 4
 ENTRY_DEPTH = 8
-_METHOD_KINDS = ("method", "constructor", "function")
+_METHOD_KINDS = ("method", "constructor", "function", "vb6_method")
 SQL_OBJECT_KINDS = ("table", "procedure", "view", "function")
 _CONF = {"confirmed": 0, "probable": 1, "uncertain": 2}
 
@@ -42,8 +44,8 @@ CALL_WORDS = {
 
 def object_key(name: str) -> str:
     """Lower-case last segment of a possibly schema / database qualified, bracketed name."""
-    parts = [p.strip("[]\"` ") for p in name.strip().split(".")]
-    return (parts[-1] if parts else "").lower()
+    parts = _split_name(name.strip())
+    return (_unquote(parts[-1]) if parts else "").lower()
 
 
 def detect_intents(query: str) -> set[str]:
@@ -118,7 +120,7 @@ def _expand_indirect(conn: sqlite3.Connection, lk: _Lookup, direct: list[dict], 
     read by code, ...). Each result keeps the effective access of the direct entry it descends from."""
     out: list[dict] = []
     seen = {(e["source_id"], e["line"]) for e in direct}
-    queue = deque()
+    queue: deque = deque()
     for e in direct:
         if e["source_type"] in ("procedure", "view", "function"):
             queue.append((e, e["via_chain"] + [lk.symbol(e["source_id"])["symbol_name"]]))
@@ -145,9 +147,9 @@ def _expand_indirect(conn: sqlite3.Connection, lk: _Lookup, direct: list[dict], 
 
 def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max_depth: int) -> dict:
     """What a procedure / view / function reads, writes and executes, following nested procedure calls."""
-    reads, writes, execs, dynamic = [], [], [], []
+    reads, writes, execs, dynamic, schema = [], [], [], [], []
     seen_obj = set()
-    queue = deque((d["id"], [], 0) for d in definitions)
+    queue: deque = deque((d["id"], [], 0) for d in definitions)
     while queue:
         sid, chain, depth = queue.popleft()
         if sid in seen_obj:
@@ -157,6 +159,8 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
             e = lk.entry(r, depth=depth, chain=chain)
             if r["op"] == "dynamic" or r["confidence"] == "uncertain":
                 dynamic.append(e)
+            elif r["access"] == "schema":
+                schema.append(e)
             elif r["access"] == "write":
                 writes.append(e)
             elif r["access"] == "read":
@@ -168,12 +172,14 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
                         if d["type"] in ("procedure", "function", "view"):
                             queue.append((d["id"], chain + [r["target_name"]], depth + 1))
     return {"reads": _sort(reads), "writes": _sort(writes),
-            "executes": _sort(execs), "dynamic_sql": _sort(dynamic)}
+            "executes": _sort(execs), "dynamic_sql": _sort(dynamic), "schema_changes": _sort(schema)}
 
 
 def _program(sym: sqlite3.Row) -> str | None:
     """Controller file label (``WD0096Controller.cs`` / ``WK0019.cs`` -> ``WD0096`` / ``WK0019``) for a method of a
     ``*Controller`` class, else None."""
+    if not sym['file_path'].lower().endswith('.cs'):
+        return None
     parts = (sym["qualified_name"] or "").split(".")
     if len(parts) < 2 or not parts[-2].endswith("Controller"):
         return None
@@ -185,7 +191,7 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> tup
     """Controller actions that reach the accessing methods through the C# call graph (one entry per program), and
     the methods on those paths that have no confirmed / probable caller at all (API, jobs, Main, or calls the graph
     could not resolve)."""
-    queue = deque()
+    queue: deque = deque()
     for e in entries:
         if e["source_type"] in _METHOD_KINDS and e["access"] != "map":
             queue.append((e["source_id"], e["access"], 0, e["confidence"]))
@@ -273,6 +279,7 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         "writers": pick("write"),
         "executed_by": pick("exec"),
         "mapped_by": _sort([e for e in confirmed if e["access"] == "map"]),
+        "schema_changes": pick("schema"),
         "possible": _sort(possible),
         "programs": [],
         "no_known_caller": [],

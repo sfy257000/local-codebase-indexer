@@ -8,6 +8,8 @@ Use Python 3.10+ in a virtual environment:
 
 ```bash
 python -m pip install -e ".[dev,onnx]" onnx build twine
+python -m ruff check local_codebase_indexer scripts
+python -m mypy
 python -m pytest -q
 python -m build
 python -m twine check dist/*

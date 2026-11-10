@@ -8,8 +8,11 @@ from typing import Iterator
 
 import pathspec
 
+from .textdecode import is_binary_data
+
 MAX_FILE_BYTES = 5 * 1024 * 1024  # index.md: never slurp files larger than 5MB
 
+HARD_IGNORE_DIRS = {".git", ".svn", ".hg", ".ai_context"}
 ALWAYS_IGNORE_DIRS = {
     ".git", ".svn", ".hg", ".ai_context", ".claude", "node_modules", "bin", "obj",
     "__pycache__", ".vs", ".idea", ".vscode", "dist", "build", ".venv", "venv",
@@ -52,9 +55,9 @@ def language_for(path: str) -> str | None:
     return LANGUAGE_BY_EXT.get(os.path.splitext(path)[1].lower())
 
 
-def _ignored(path: str, is_dir: bool, specs: list) -> bool:
+def _ignored(path: str, is_dir: bool, specs: list, override=None) -> bool:
     ignored = False
-    for base, spec in specs:
+    for base, spec in [*specs, *([override] if override else [])]:
         rel = os.path.relpath(path, base).replace(os.sep, "/")
         if is_dir:
             rel += "/"
@@ -62,6 +65,14 @@ def _ignored(path: str, is_dir: bool, specs: list) -> bool:
         if match is not None:
             ignored = match
     return ignored
+
+
+def _explicit_include(path: str, is_dir: bool, override) -> bool:
+    if override is None:
+        return False
+    base, spec = override
+    relative = os.path.relpath(path, base).replace(os.sep, '/') + ('/' if is_dir else '')
+    return spec.check_file(relative).include is False
 
 
 @dataclass
@@ -101,14 +112,15 @@ def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES, report: ScanReport | 
     root = os.path.abspath(root)
     if not os.path.isdir(root):
         raise ValueError(f"project root is not an existing directory: {root}")
-    spec = pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE + _read_lines(os.path.join(root, PROJECT_IGNORE_FILE)))
-    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes, report)
+    spec = pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE)
+    override = (root, pathspec.GitIgnoreSpec.from_lines(_read_lines(os.path.join(root, PROJECT_IGNORE_FILE))))
+    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes, report, override)
     for extra in extra_roots(root):
         yield from _walk(extra, [(extra, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE))],
                          lambda p: p.replace(os.sep, "/"), max_bytes, report)
 
 
-def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None = None) -> Iterator[ScannedFile]:
+def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None = None, override=None) -> Iterator[ScannedFile]:
     def record(path, reason):
         if report is not None:
             report.record(rel(path), reason)
@@ -136,16 +148,16 @@ def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None 
                 record(e.path, "unreadable")
                 continue
             if is_dir:
-                if e.name in ALWAYS_IGNORE_DIRS:
+                if e.name in HARD_IGNORE_DIRS or (e.name in ALWAYS_IGNORE_DIRS and not _explicit_include(e.path, True, override)):
                     record(e.path, "excluded_directory")
                     continue
-                if _ignored(e.path, True, specs):
+                if _ignored(e.path, True, specs, override):
                     record(e.path, "ignored_directory")
                     continue
                 subdirs.append((e.path, specs))
             elif is_file:
                 lang = language_for(e.name)
-                if _ignored(e.path, False, specs):
+                if _ignored(e.path, False, specs, override):
                     record(e.path, "ignored_file")
                     continue
                 if lang is None:
@@ -158,6 +170,14 @@ def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None 
                     continue
                 if st.st_size > max_bytes:
                     record(e.path, "too_large")
+                    continue
+                try:
+                    with open(e.path, 'rb') as stream:
+                        binary = is_binary_data(stream.read(8192))
+                except OSError:
+                    binary = False  # Let indexing record the read failure and retry it.
+                if binary:
+                    record(e.path, 'binary')
                     continue
                 record(e.path, "eligible")
                 yield ScannedFile(
@@ -181,8 +201,8 @@ def explain_path(root: str, path: str) -> dict:
         raise ValueError("path must stay inside the project root or an extra root")
     base = max(bases, key=len)
     relative = os.path.relpath(target, base)
-    specs = [(base, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE + (
-        _read_lines(os.path.join(root, PROJECT_IGNORE_FILE)) if base == root else [])))]
+    specs = [(base, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE))]
+    override = (base, pathspec.GitIgnoreSpec.from_lines(_read_lines(os.path.join(root, PROJECT_IGNORE_FILE)))) if base == root else None
     current = base
     for part in relative.split(os.sep):
         specs.append((current, pathspec.GitIgnoreSpec.from_lines(_read_lines(os.path.join(current, '.gitignore')))))
@@ -194,10 +214,10 @@ def explain_path(root: str, path: str) -> dict:
             reason = 'missing'
             break
         is_dir = os.path.isdir(current)
-        if is_dir and part in ALWAYS_IGNORE_DIRS:
+        if is_dir and (part in HARD_IGNORE_DIRS or (part in ALWAYS_IGNORE_DIRS and not _explicit_include(current, True, override))):
             reason = 'excluded_directory'
             break
-        if _ignored(current, is_dir, specs):
+        if _ignored(current, is_dir, specs, override):
             reason = 'ignored_directory' if is_dir else 'ignored_file'
             break
     else:
@@ -210,7 +230,7 @@ def explain_path(root: str, path: str) -> dict:
         else:
             try:
                 with open(target, 'rb') as f:
-                    reason = 'binary' if b'\x00' in f.read(8192) else 'eligible'
+                    reason = 'binary' if is_binary_data(f.read(8192)) else 'eligible'
             except OSError:
                 reason = 'unreadable'
     return {'path': path, 'reason': reason, 'eligible': reason == 'eligible'}
