@@ -2,6 +2,8 @@
 
 ## 0.9.0
 
+- Fix a first-run Windows lock-file initialization race found by concurrent-process CI; serialize index ignore-file creation.
+
 - Fix SQL aliases `a` / `an` / `the`, parameterized TOP, UPDATE table hints, old NOLOCK hints, and comma sources after JOIN predicates.
 - Preserve bracketed/quoted identifiers and linked-server names, including spaces, backslashes, escaped delimiters, and quoted dots. Ignore keywords inside identifiers and nested block comments.
 - Exclude cursor FETCH and scalar TRIM FROM operands from table reads; analyze literal OPENQUERY SQL as uncertain.

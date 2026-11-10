@@ -254,3 +254,44 @@ def test_mcp_exposes_cursor_and_layer_explanations(noisy_project):
     assert not handle(t, request)['result']['isError']
     request['params']['arguments']['query'] = 'different'
     assert handle(t, request)['result']['isError']
+
+
+def test_windows_lock_contends_before_touching_a_locked_byte(tmp_path, monkeypatch):
+    """Model the first-run Windows race that intermittently failed real CI."""
+    import builtins
+    import errno
+    import types
+    from local_codebase_indexer import locking
+
+    state = {'held': False, 'attempts': 0}
+    class GuardedStream:
+        def __init__(self, stream):
+            self.stream = stream
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.stream.close()
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+        def write(self, value):
+            if not state['held']:
+                raise PermissionError(errno.EACCES, 'Another process owns this byte')
+            return self.stream.write(value)
+
+    def byte_lock(fd, operation, count):
+        assert count == 1
+        if operation == 1:
+            state['attempts'] += 1
+            if state['attempts'] == 1:
+                raise PermissionError(errno.EACCES, 'Contended byte')
+            state['held'] = True
+        else:
+            state['held'] = False
+
+    monkeypatch.setattr(locking, 'os', types.SimpleNamespace(
+        name='nt', path=os.path, makedirs=os.makedirs, SEEK_END=os.SEEK_END))
+    monkeypatch.setitem(sys.modules, 'msvcrt', types.SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=byte_lock))
+    monkeypatch.setattr(locking, 'open', lambda *a, **k: GuardedStream(builtins.open(*a, **k)), raising=False)
+    with locking.index_lock(str(tmp_path / 'index.db')):
+        assert state['held'] and state['attempts'] == 2
+    assert not state['held']
