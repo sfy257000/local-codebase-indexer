@@ -289,7 +289,7 @@ def test_windows_lock_contends_before_touching_a_locked_byte(tmp_path, monkeypat
             state['held'] = False
 
     monkeypatch.setattr(locking, 'os', types.SimpleNamespace(
-        name='nt', path=os.path, makedirs=os.makedirs, SEEK_END=os.SEEK_END))
+        name='nt', path=os.path, makedirs=os.makedirs, SEEK_END=os.SEEK_END, environ=os.environ))
     monkeypatch.setitem(sys.modules, 'msvcrt', types.SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=byte_lock))
     monkeypatch.setattr(locking, 'open', lambda *a, **k: GuardedStream(builtins.open(*a, **k)), raising=False)
     with locking.index_lock(str(tmp_path / 'index.db')):
