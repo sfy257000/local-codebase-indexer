@@ -91,6 +91,25 @@ class _Extractor:
             node = node.parent
         return '.'.join(reversed(names))
 
+    def _scope_env(self, node) -> dict[str, _Cand]:
+        env = dict(self.class_env.get(self._class_key(node), {}))
+        env.update({'this.' + name: value for name, value in list(env.items())})
+        parameters = node.child_by_field_name('parameters')
+        if parameters is not None:
+            for parameter in parameters.named_children:
+                name = parameter.child_by_field_name('name')
+                if name is not None:
+                    env[self.text(name)] = _Cand(HOLE, False, self.line(name))
+        return env
+
+    @staticmethod
+    def _bind(env, name: str, value: _Cand) -> None:
+        previous = env.get(name)
+        other = name[5:] if name.startswith('this.') else 'this.' + name
+        env[name] = value
+        if previous is not None and env.get(other) is previous:
+            env[other] = value
+
     # ---------------------------------------------------------------- helpers
     def text(self, n) -> str:
         return self.src[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
@@ -188,7 +207,7 @@ class _Extractor:
             raw = self.text(n)
             receiver = n.child_by_field_name('expression')
             if receiver is not None and self.text(receiver) == 'this' and name is not None:
-                c = env.get(self.text(name))
+                c = env.get('this.' + self.text(name))
             else:
                 matches = [value for key, value in self.file_env.items() if key == raw or key.endswith('.' + raw)]
                 c = matches[0] if len(matches) == 1 else None
@@ -292,7 +311,7 @@ class _Extractor:
                 continue
             if n.type in _SCOPES:
                 stack.append(("exit", (len(self.cands), n, env)))
-                env = dict(self.class_env.get(self._class_key(n), {}))
+                env = self._scope_env(n)
                 for c in reversed(n.children):
                     stack.append(("node", c))
                 continue
@@ -346,13 +365,15 @@ class _Extractor:
                 if c is not None:
                     env[ident] = c  # string sql = sb.ToString();
                     return True
-            if ident and init is not None and self._is_stringy(init):
+            if ident and init is not None:
                 r = self.evaluate(init, env)
                 if r:
                     c = _Cand(r[0], r[1], self.line(init))
                     env[ident] = c
                     self.cands.append(c)
                     return True
+            if ident:
+                env[ident] = _Cand(HOLE, False, self.line(n))
             return False
         if t == "assignment_expression":
             return self._assignment(n, env, stack)
@@ -390,12 +411,17 @@ class _Extractor:
         if left.type == "identifier" and self._is_builder_creation(right):
             env[self.text(left)] = self._new_builder(right, env)
             return True
-        if left.type == "identifier" and self._is_stringy(right):
+        if left.type == 'identifier' or (left.type == 'member_access_expression' and self.text(left).startswith('this.')):
             name = self.text(left)
             r = self.evaluate(right, env)
             if r is None:
+                self._bind(env, name, _Cand(HOLE, False, self.line(right)))
                 return False
             cur = env.get(name)
+            if cur is not None and (cur.sink or any(cur is value for value in self.file_env.values())):
+                cur = _Cand(cur.text, cur.complete, self.line(right))
+                self._bind(env, name, cur)
+                self.cands.append(cur)
             if op == "+=" and cur is not None:
                 cur.text += r[0]
                 cur.complete = cur.complete and r[1]
@@ -403,7 +429,7 @@ class _Extractor:
                 cur.text, cur.complete = r  # sql = sql + "..."
             else:
                 c = _Cand(r[0], r[1], self.line(right))
-                env[name] = c
+                self._bind(env, name, c)
                 self.cands.append(c)
             return True
         return False
@@ -415,6 +441,8 @@ class _Extractor:
         if expr.type in ("identifier", "invocation_expression"):
             c = env.get(self.text(expr)) if expr.type == "identifier" else self._builder_of(expr, env)
             if c is not None:
+                if c.text == HOLE:
+                    return False
                 if any(c is value for value in self.file_env.values()):
                     self.cands.append(_Cand(c.text, c.complete, self.line(expr), sink=True, proc_ok=first))
                     return True
@@ -424,6 +452,8 @@ class _Extractor:
         if expr.type != "identifier" and (self._is_stringy(expr) or expr.type in ("member_access_expression", "invocation_expression")):
             r = self.evaluate(expr, env)
             if r is not None:
+                if r[0] == HOLE:
+                    return False
                 self.cands.append(_Cand(r[0], r[1], self.line(expr), sink=True, proc_ok=first))
                 return True
         stack.append(("node", expr))
@@ -451,13 +481,19 @@ class _Extractor:
         if name and _SINK_METHOD.match(name):
             handled_any = False
             for i, (expr, _named) in enumerate(args):
-                handled = self._sink_arg(expr, env, stack, first=not handled_any)
+                if handled_any:
+                    if expr is not None:
+                        stack.append(('node', expr))
+                    continue
+                handled = self._sink_arg(expr, env, stack, first=True)
                 handled_any = handled_any or handled
             if not handled_any and _DAPPER_STRICT.match(name) and args and args[0][0] is not None:
                 second = args[1][0] if len(args) > 1 else None
                 has_params = second is not None and second.type in (
                     "anonymous_object_creation_expression", "object_creation_expression", "identifier")
-                if has_params or any(named for _e, named in args):
+                first_arg = args[0][0]
+                unresolved = self.evaluate(first_arg, env)
+                if has_params or any(named for _e, named in args) or (unresolved is not None and unresolved[0] == HOLE):
                     self._dynamic_site(n)
             if func is not None:
                 stack.append(("node", func))

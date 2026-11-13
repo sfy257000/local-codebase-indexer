@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "sample_kind": "bundled synthetic fixture",
+  "checked_date": "2026-11-13",
+  "index_format": "10",
+  "ripgrep_version": "ripgrep 15.2.0 (rev e89fff89ac)",
+  "literal_reference_files": [
+    "Data/OrderRepository.cs",
+    "Sql/Sales_OrderHeader.sql",
+    "Sql/usp_ApproveOrder.sql"
+  ],
+  "writers": [
+    {
+      "source": "dbo.usp_ApproveOrder",
+      "confidence": "confirmed",
+      "via_chain": []
+    },
+    {
+      "source": "Shop.Data.OrderRepository.Approve",
+      "confidence": "confirmed",
+      "via_chain": [
+        "usp_ApproveOrder"
+      ]
+    }
+  ],
+  "programs": [
+    {
+      "program": "Orders",
+      "file_path": "Controllers/OrdersController.cs",
+      "access": [
+        "read",
+        "write"
+      ],
+      "actions": [
+        "Approve",
+        "Details"
+      ],
+      "confidence": "probable",
+      "pages": [
+        "Views/Orders/Details.cshtml"
+      ]
+    }
+  ],
+  "checks": {
+    "stored_procedure_writer": true,
+    "indirect_csharp_writer": true,
+    "controller_action": true,
+    "razor_page": true
+  },
+  "limitations": [
+    "One literal search, not an end-to-end Claude agent comparison.",
+    "No measured human time, token, latency, or competing-tool accuracy advantage is established."
+  ]
+}

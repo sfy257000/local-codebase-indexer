@@ -10,6 +10,19 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 
 [Case study and raw results](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/case-study.md) · [CLI reference](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/reference.md) · [PyPI](https://pypi.org/project/local-codebase-indexer/) · [MIT license](https://github.com/sfy257000/local-codebase-indexer/blob/main/LICENSE)
 
+## How it compares with Claude's Grep and similar tools
+
+**The extra value is an indexed SQL → C# → page relation report.** For supported patterns, one `data-access` query returns direct/procedure-mediated access, controller actions, page links, and confidence labels. Claude can also follow these links through multiple Grep searches and file reads; this tool packages that investigation into a repeatable CLI/MCP result.
+
+| Tool / workflow | Strong fit | Trade-off and where this project helps |
+|---|---|---|
+| Claude + Grep / ripgrep | Exact identifiers, strings, and regex; no index setup | Keep it for direct text checks. This project's SQL/call/page relations go beyond the literal table-name matches. |
+| [Serena](https://github.com/oraios/serena) with LSP / JetBrains | Backend-driven symbols, references, and editing/refactoring | Prefer compiler/IDE semantics for accurate renames and overloads. This project provides a focused SQL maintenance report without a language-server backend. |
+| [Claude Context](https://github.com/zilliztech/claude-context) | Natural-language hybrid BM25 + dense-vector retrieval | Its documented setup uses an embedding provider and Milvus/Zilliz configuration; local providers are supported. This project's default needs no embedding API or vector server, but identifier-oriented hashing can miss paraphrases. |
+| Local Codebase Indexer | SQL Server table/procedure → C# accessors → actions/pages; schema and Git impact | Approximate static analysis with visible confidence; no Roslyn overload resolution or semantic rename. |
+
+In the bundled synthetic demo, one exact table-name search finds **3 files**. The relation report also reaches the controller and Razor page, which contain no literal table name; all **4 scenario checks pass**. The controller path is `probable`, not runtime proof. This is not an end-to-end Claude benchmark or a measured token/time saving. See [reproduction commands, evidence, and upstream sources](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/tool-comparison.md).
+
 ## Try it in three steps
 
 Python **3.10+**. Run these in a virtual environment; no SQL Server, .NET runtime, model download, or API key is needed for the demo.

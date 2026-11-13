@@ -1,6 +1,6 @@
 # Instructions for AI coding assistants
 
-This repository is **local-codebase-indexer**: a local code index (SQLite, no cloud) that you can use as an MCP server or CLI to find code, callers, and SQL table/stored-procedure access with far fewer tokens than reading files.
+This repository is **local-codebase-indexer**: a local code index (SQLite, no cloud) that you can use as an MCP server or CLI to find code, callers, and SQL table/stored-procedure access with source locations, confidence labels, and bounded context.
 
 ## Install (pick one)
 
@@ -87,3 +87,10 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 - VB6 `.frm`/`.bas`/`.cls` SQL strings get procedure owners. Complete SQL at known ADO/DAO receivers may be confirmed; unknown receivers or incomplete concatenation remain probable/uncertain. No VB6 call graph or runtime execution proof is implied.
 - Explicit negations in `.ai_context/ignore` can include default source directories such as `!bin/` and `!bin/**`, overriding `.gitignore`. Include excluded parents first. `.git`, `.svn`, `.hg`, and `.ai_context` remain excluded.
 - Keep `query.py` as the facade/search implementation; navigation, source context, and rendering live in `relations.py`, `context.py`, and `rendering.py`. Legacy public imports from `query` remain supported.
+
+## Pending correctness review
+
+- SQL statement/batch boundaries and lexical bindings must not manufacture confirmed access from unrelated literals or shadowed parameters. Keep regression coverage in `tests/test_provenance_boundaries.py`.
+- SQL object definitions come only from SQL sources; application symbol navigation still includes Python/JS functions.
+- Index format 10 invalidates older parsed edges. This does not change the package/Registry version or publish a release.
+- Tool comparisons live in `docs/tool-comparison.md`; keep language READMEs in sync, cite upstream capabilities, and distinguish a literal-search baseline from a full Claude workflow. Do not claim measured speed/token/accuracy superiority without a corresponding experiment.

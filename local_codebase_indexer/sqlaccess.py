@@ -11,7 +11,7 @@ regular expressions), not a full T-SQL parser. What it does not understand is re
 from __future__ import annotations
 
 import re
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from itertools import islice
 
@@ -48,13 +48,17 @@ _RX_FROM = re.compile(r"(?<![@\w$#.])FROM\b", re.I)
 _RX_JOIN = re.compile(r"(?<![@\w$#.])JOIN\b", re.I)
 _RX_EXEC = re.compile(rf"(?<![@\w$#.])EXEC(?:UTE)?\s+(?:@\w+\s*=\s*)?(?P<n>{_NAME})", re.I)
 _RX_EXEC_PAREN = re.compile(r"(?<![@\w$#.])EXEC(?:UTE)?\s*\(", re.I)
-_RX_SPEXEC = re.compile(r"(?<![@\w$#.])sp_executesql\b", re.I)
 _RX_CTE = re.compile(rf"(?:\bWITH|,)\s+(?P<n>{_PART})\s*(?:\([^)]*\))?\s+AS\s*\(", re.I)
 
 _RX_ITEM_NAME = re.compile(rf"\s*(?P<n>{_NAME})")
 _RX_ALIAS = re.compile(rf"\s+(?:AS\s+)?(?P<a>{_PART})", re.I)
 _RX_HINT = re.compile(_HINT, re.I)
 _RX_COMMA = re.compile(r"\s*,")
+
+
+_BATCH = r'(?m:^[ \t]*GO(?:[ \t]+\d+)?[ \t]*$)'
+_TERMINATOR = re.compile(rf';|{_BATCH}', re.I)
+_NEXT_STATEMENT = r'(?<![@\w$#.])(?:SELECT|INSERT|UPDATE|DELETE|MERGE|TRUNCATE|EXEC(?:UTE)?|CREATE|ALTER|DROP|DECLARE|SET|RETURN|PRINT|IF|WHILE|RAISERROR|THROW|WAITFOR|USE|GRANT|DENY|REVOKE|OPEN|CLOSE|FETCH|DEALLOCATE|BACKUP|RESTORE|DBCC)\b'
 
 
 @dataclass
@@ -187,6 +191,97 @@ def _close_paren(masked: str, start: int) -> int:
     return len(masked)
 
 
+def _statement_end(masked: str, start: int, stop: int | None = None) -> int:
+    """Bound an UPDATE/DELETE tail or EXEC arguments without needing a semicolon."""
+    depth = 0
+    tokens = re.compile(rf'{_QUOTED.pattern}|[();]|{_BATCH}|{_NEXT_STATEMENT}', re.I)
+    stop = len(masked) if stop is None else min(len(masked), stop)
+    for token in tokens.finditer(masked, start, stop):
+        value = token.group()
+        if value.startswith(('[', '"')):
+            continue
+        if value == '(':
+            depth += 1
+        elif value == ')':
+            if not depth:
+                return token.start()
+            depth -= 1
+        elif not depth:
+            return token.start()
+    return stop
+
+
+def _cte_end(masked: str, start: int, stop: int) -> int:
+    """A CTE belongs to one consumer, including its set-operation/INSERT SELECT arms."""
+    tokens = re.compile(rf'{_QUOTED.pattern}|[()]|(?<![@\w$#.])[A-Za-z_]\w*', re.I)
+    depth = 0
+    consumer = ''
+    previous = ''
+    insert_select = False
+    update_set = False
+    for token in tokens.finditer(masked, start, stop):
+        value = token.group().upper()
+        if value.startswith(('[', '"')):
+            if not depth:
+                previous = 'identifier'
+            continue
+        if value == '(':
+            depth += 1
+            continue
+        if value == ')':
+            depth -= 1
+            if not depth:
+                previous = ')'
+            continue
+        if depth:
+            continue
+        if not consumer:
+            if value in {'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE'}:
+                consumer = value
+                insert_select = value == 'INSERT'
+                update_set = value == 'UPDATE'
+                if value == 'MERGE':
+                    return stop  # T-SQL MERGE must end with a semicolon.
+            previous = value
+            continue
+        if value == 'VALUES':
+            insert_select = False
+        if re.fullmatch(_NEXT_STATEMENT, value, re.I):
+            if value == 'SELECT' and (insert_select or previous in {'UNION', 'ALL', 'DISTINCT', 'INTERSECT', 'EXCEPT'}):
+                insert_select = False
+            elif value == 'SET' and update_set:
+                update_set = False
+            else:
+                return token.start()
+        previous = value
+    return stop
+
+
+def _sql_argument(masked: str, start: int, end: int) -> list[tuple[int, int]]:
+    """sp_executesql's @stmt, excluding declarations and parameter values."""
+    arguments = []
+    depth, current = 0, start
+    tokens = re.compile(rf'{_QUOTED.pattern}|[(),]')
+    for token in tokens.finditer(masked, start, end):
+        value = token.group()
+        if value.startswith(('[', '"')):
+            continue
+        if value == '(':
+            depth += 1
+        elif value == ')':
+            depth -= 1
+        elif not depth:
+            arguments.append((current, token.start()))
+            current = token.end()
+    arguments.append((current, end))
+    for left, right in arguments:
+        if re.match(r'\s*@stmt\s*=', masked[left:right], re.I):
+            return [(left, right)]
+    if arguments and not re.match(r'\s*@\w+\s*=', masked[start:arguments[0][1]]):
+        return arguments[:1]
+    return []
+
+
 def _table_from(masked: str, pos: int, start: int = 0) -> bool:
     prefix = masked[start:pos]
     if re.search(r'\bFETCH\s+(?:(?:NEXT|PRIOR|FIRST|LAST|ABSOLUTE|RELATIVE)(?:\s+[+-]?(?:\d+|@\w+))?\s*)?$', prefix, re.I):
@@ -210,9 +305,9 @@ def _table_from(masked: str, pos: int, start: int = 0) -> bool:
 
 def _source_items(masked: str) -> list:
     items = []
-    punctuation = list(_matches(re.compile(r'[(),;]|\b(?:WHERE|GROUP|ORDER|HAVING|UNION|EXCEPT|INTERSECT|OPTION|FOR|SET|GO)\b', re.I), masked))
+    punctuation = list(_matches(re.compile(rf'[(),;]|{_BATCH}|(?<![@\w$#.])(?:WHERE|GROUP|ORDER|HAVING|UNION|EXCEPT|INTERSECT|OPTION|FOR|SET)\b', re.I), masked))
     positions = [token.start() for token in punctuation]
-    boundaries = [token.end() for token in punctuation if token.group() == ';']
+    boundaries = [token.end() for token in _matches(_TERMINATOR, masked)]
     for rx in (_RX_FROM, _RX_JOIN):
         for m in _matches(rx, masked):
             boundary = bisect_right(boundaries, m.start())
@@ -319,10 +414,17 @@ def _resolve_alias(target: list[str], window_items: list) -> list[str]:
 def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False) -> list[Access]:
     """All table / procedure accesses in ``text``; line numbers start at ``first_line``."""
     masked, literals = mask_sql(text)
+    literal_starts = [start for start, _end, _content in literals]
     out: list[Access] = []
     base_conf = "uncertain" if _dynamic else "confirmed"
     base_via = "dynamic_sql" if _dynamic else "sql"
-    ctes = {_unquote(m.group("n")).lower() for m in _matches(_RX_CTE, masked)}
+    boundaries = [m.end() for m in _matches(_TERMINATOR, masked)]
+    ctes: dict[int, list[tuple[int, int, str]]] = {}
+    for declaration in _matches(_RX_CTE, masked):
+        scope = bisect_right(boundaries, declaration.start())
+        stop = boundaries[scope] if scope < len(boundaries) else len(masked)
+        end = _cte_end(masked, declaration.start(), stop)
+        ctes.setdefault(scope, []).append((declaration.start(), end, _unquote(declaration.group('n')).lower()))
     seen: set[tuple] = set()
     line_breaks = [m.start() for m in re.finditer("\n", masked)]
 
@@ -331,8 +433,10 @@ def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False)
             return
         parts = [_unquote(p) for p in parts]
         key = parts[-1].lower()
-        if kind == "table" and key in ctes and len(parts) == 1:
-            return
+        if kind == 'table' and len(parts) == 1:
+            scope = bisect_right(boundaries, pos)
+            if any(at <= pos < end and name == key for at, end, name in ctes.get(scope, [])):
+                return
         conf = base_conf
         if HOLE in key:
             parts, key, kind, conf = ["(dynamic)"], "?", "unknown", "uncertain"
@@ -347,10 +451,7 @@ def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False)
         ))
 
     def window_items(end: int) -> list:
-        window = masked[end:end + 3000]
-        stop = next(_matches(re.compile(';'), window), None)
-        if stop:
-            window = window[:stop.start()]
+        window = masked[end:_statement_end(masked, end, end + 3000)]
         return _source_items(window)
 
     for m in _matches(_RX_INSERT, masked):
@@ -386,9 +487,13 @@ def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False)
     for m in _matches(index_ddl, masked):
         add(_split_name(m.group('n')), m.start('n'), 'table', 'schema', m.group('op').split()[0].lower() + '_index')
 
+    dyn_ranges: list[tuple[int, int]] = []
     for m in _matches(_RX_EXEC, masked):
         parts = _split_name(m.group("n"))
-        if parts[-1].lower() == "sp_executesql":
+        if _unquote(parts[-1]).lower() == 'sp_executesql':
+            if not _dynamic:
+                add([HOLE], m.start(), 'unknown', 'exec', 'dynamic')
+                dyn_ranges.extend(_sql_argument(masked, m.end(), _statement_end(masked, m.end())))
             continue
         if parts[0].startswith("@"):
             add([HOLE], m.start("n"), "unknown", "exec", "dynamic")
@@ -397,22 +502,16 @@ def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False)
 
     # dynamic SQL: record the site, and analyse any literal inside the call as uncertain
     if not _dynamic:
-        dyn_ranges: list[tuple[int, int]] = []
-        for m in list(_matches(_RX_EXEC_PAREN, masked)):
-            depth, k = 1, m.end()
-            while k < len(masked) and depth:
-                depth += (masked[k] == "(") - (masked[k] == ")")
-                k += 1
-            dyn_ranges.append((m.end(), k))
-            add([HOLE], m.start(), "unknown", "exec", "dynamic")
-        for m in _matches(_RX_SPEXEC, masked):
-            dyn_ranges.append((m.end(), min(len(masked), m.end() + 4000)))
+        for m in _matches(_RX_EXEC_PAREN, masked):
+            dyn_ranges.append((m.end(), _close_paren(masked, m.end() - 1)))
             add([HOLE], m.start(), "unknown", "exec", "dynamic")
         for m in _matches(re.compile(r'\bOPENQUERY\s*\(', re.I), masked):
             dyn_ranges.append((m.end(), _close_paren(masked, m.end() - 1)))
         for start, end in dyn_ranges:
-            for ls, le, content in literals:
-                if start <= ls < end and content.strip():
+            first = bisect_left(literal_starts, start)
+            last = bisect_left(literal_starts, end)
+            for ls, le, content in islice(literals, first, last):
+                if content.strip():
                     line = first_line + _line_of(masked, ls) - 1
                     for a in extract_sql_accesses(content, line, _dynamic=True):
                         sig = (a.key, tuple(_split_name(a.qualifier)), a.access, a.op, a.line)

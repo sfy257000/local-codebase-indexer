@@ -20,6 +20,7 @@ MAX_DEPTH = 4
 ENTRY_DEPTH = 8
 _METHOD_KINDS = ("method", "constructor", "function", "vb6_method")
 SQL_OBJECT_KINDS = ("table", "procedure", "view", "function")
+_SQL_DEFINITION = "file_path IN (SELECT file_path FROM files WHERE language='sql')"
 _CONF = {"confirmed": 0, "probable": 1, "uncertain": 2}
 
 WRITE_WORDS = {
@@ -61,7 +62,7 @@ def known_object_keys(conn: sqlite3.Connection) -> set[str]:
     keys = {r[0] for r in conn.execute(
         "SELECT DISTINCT target_key FROM data_access WHERE target_key != '?' AND via != 'ef_raw'")}
     keys |= {r[0].lower() for r in conn.execute(
-        f"SELECT symbol_name FROM symbols WHERE symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))})",
+        f"SELECT symbol_name FROM symbols WHERE {_SQL_DEFINITION} AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))})",
         SQL_OBJECT_KINDS)}
     return keys
 
@@ -110,7 +111,7 @@ def _definitions(conn: sqlite3.Connection, key: str) -> list[dict]:
          "qualified_name": r["qualified_name"], "id": r["id"]}
         for r in conn.execute(
             f"SELECT id, file_path, start_line, symbol_type, qualified_name FROM symbols "
-            f"WHERE lower(symbol_name)=? AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
+            f"WHERE {_SQL_DEFINITION} AND lower(symbol_name)=? AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
             f"ORDER BY file_path, start_line", (key, *SQL_OBJECT_KINDS))
     ]
 
@@ -255,7 +256,7 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
             "AND via != 'ef_raw' LIMIT 10",
             (f"%{key}%",))]
         like += [r[0] for r in conn.execute(
-            f"SELECT DISTINCT symbol_name FROM symbols WHERE symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
+            f"SELECT DISTINCT symbol_name FROM symbols WHERE {_SQL_DEFINITION} AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
             f"AND lower(symbol_name) LIKE ? LIMIT 10", (*SQL_OBJECT_KINDS, f"%{key}%"))]
         return {"object": object_name, "key": key, "found": False, "suggestions": sorted(set(like))[:10]}
 

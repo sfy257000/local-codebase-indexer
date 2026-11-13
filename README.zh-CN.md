@@ -10,6 +10,19 @@
 
 [可复现案例及完整输出](docs/case-study.md) · [进阶手册](docs/reference.zh-CN.md) · [PyPI](https://pypi.org/project/local-codebase-indexer/) · [MIT 许可](LICENSE)
 
+## 与 Claude 的 Grep 及类似工具比较
+
+**这个项目多提供的是 SQL → C# → 页面的索引关系报告。** 在支持的代码模式中，一次 `data-access` 查询就能列出直接／通过存储过程的访问、Controller Action、页面与置信度标签。Claude 也能通过多轮 Grep 和读文件追踪关系；该工具将这段调查整理成可重复执行的 CLI／MCP 结果。
+
+| 工具／流程 | 适合用途 | 取舍与本项目的用途 |
+|---|---|---|
+| Claude＋Grep／ripgrep | 精确标识符、字符串和正则表达式，无需建立索引 | 直接核对文本仍优先使用。该项目另提供字面表名以外的 SQL／调用／页面关系。 |
+| [Serena](https://github.com/oraios/serena)＋LSP／JetBrains | 后端提供的符号、引用和编辑／重构 | 精确 rename、重载解析优先使用编译器／IDE 语义。本项目聚焦 SQL 维护报告，无需配置语言服务器。 |
+| [Claude Context](https://github.com/zilliztech/claude-context) | 自然语言的 BM25＋dense vector 混合搜索 | 官方配置包含 embedding provider 和 Milvus／Zilliz，也支持本地 provider。本项目默认无需 embedding API 或向量服务器，但 hashing 仍可能遗漏自然语言改写。 |
+| Local Codebase Indexer | SQL Server 表／存储过程 → C# 访问者 → Action／页面，以及 schema、Git impact | 带有置信度标签的近似静态分析，没有 Roslyn 重载解析或语义 rename。 |
+
+内置合成示例的一次精确表名搜索会找到 **3 个文件**；关系报告还能追踪到不含该表名字符串的 Controller 和 Razor 页面，**4 项场景检查通过**。Controller 路径标为 `probable`，不代表运行时证明。这不是 Claude 完整工作流程的性能比较，也没有测量节省多少 token／时间。[复现命令、证据与上游资料](docs/tool-comparison.md)。
+
 ## 三步开始
 
 需要 **Python 3.10+**，建议在虚拟环境执行。内置 demo 不需要 SQL Server、.NET 运行环境、模型下载或 API key。
