@@ -1,6 +1,6 @@
 # Local Codebase Indexer
 
-**English** | [繁體中文](https://github.com/sfy257000/local-codebase-indexer/blob/main/README.zh-TW.md) | [简体中文](https://github.com/sfy257000/local-codebase-indexer/blob/main/README.zh-CN.md)
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
 **Which C# code and pages reach this SQL Server table?**
 
@@ -21,7 +21,7 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 | [Claude Context](https://github.com/zilliztech/claude-context) | Natural-language hybrid BM25 + dense-vector retrieval | Its documented setup uses an embedding provider and Milvus/Zilliz configuration; local providers are supported. This project's default needs no embedding API or vector server, but identifier-oriented hashing can miss paraphrases. |
 | Local Codebase Indexer | SQL Server table/procedure → C# accessors → actions/pages; schema and Git impact | Approximate static analysis with visible confidence; no Roslyn overload resolution or semantic rename. |
 
-In the bundled synthetic demo, one exact table-name search finds **3 files**. The relation report also reaches the controller and Razor page, which contain no literal table name; all **4 scenario checks pass**. The controller path is `probable`, not runtime proof. This is not an end-to-end Claude benchmark or a measured token/time saving. See [reproduction commands, evidence, and upstream sources](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/tool-comparison.md).
+In the bundled synthetic demo, one exact table-name search finds **3 files**. The relation report also reaches the controller and Razor page, which contain no literal table name; all **4 scenario checks pass**. The controller path is `probable`, not runtime proof. This is not an end-to-end Claude benchmark or a measured token/time saving. See [reproduction commands, evidence, and upstream sources](docs/tool-comparison.md).
 
 ## Try it in three steps
 
