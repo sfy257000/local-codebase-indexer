@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev,onnx]" onnx build twine
-      - run: python -m ruff check local_codebase_indexer scripts && python -m mypy
+      - run: python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py && python -m mypy
       - run: python -c "import onnx, onnxruntime, tokenizers" && python -m pytest -q -rs
       - run: python -m build && python -m twine check dist/*
       - name: Validate release versions and generate checksums

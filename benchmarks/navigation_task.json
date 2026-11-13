@@ -1,0 +1,11 @@
+{
+  "description": "Author-curated synthetic task: return source evidence for the table definition, SQL writer, C# writer, controller entry point, and Razor page. Intermediate service files are not required answers for this particular report task.",
+  "target": "Sales_OrderHeader",
+  "required_files": [
+    "Sql/Sales_OrderHeader.sql",
+    "Sql/usp_ApproveOrder.sql",
+    "Data/OrderRepository.cs",
+    "Controllers/OrdersController.cs",
+    "Views/Orders/Details.cshtml"
+  ]
+}

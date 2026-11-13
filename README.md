@@ -12,6 +12,20 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 
 ## How it compares with Claude's Grep and similar tools
 
+**Measured on our MES fixtures: +9.5–10.7 percentage points in relevant-file recall versus `rg + BM25`.** For the bundled SQL → C# → page investigation, the relation report covers **5/5 required evidence files**, versus **3/5** from one literal table-name search (**+40 points**).
+
+| Fixed retrieval suite | `rg + BM25` file Recall@5 | This project | Difference |
+|---|---:|---:|---:|
+| MES-style synthetic: 42 questions, 24 files | 81.0% | **91.7%** | **+10.7 pp** |
+| Same 42 questions with distractors: 109 files | 81.0% | **90.5%** | **+9.5 pp** |
+| Python stdlib: 12 questions, 85 real source files | **100.0%** | 79.2% | −20.8 pp |
+
+Recall means the fraction of known relevant files retrieved, averaged over questions. The baseline runs real ripgrep with generic query-term splitting and BM25 ranking; it is not Claude's agent. This project uses default hashing and 5 result chunks; the baseline returns 5 files. Both are scored at file level. These are 54 unique, project-authored questions (96 executions including the repeated noisy suite), not a general accuracy guarantee.
+
+**Less source to read:** on the noisy MES and stdlib suites, rendered search results contain **94.9% / 96.9% fewer characters** than reading the same selected files in full. Tiny synthetic files instead produce **2.3% more** characters. This measures output size against whole-file reading, not savings against Grep snippets or Claude tokens.
+
+**Cost of the richer report:** the demo CLI takes **244.5 ms** warm versus **8.3 ms** for one literal `rg` call (three-run medians; first indexer call **266.1 ms** including indexing). It adds controller/page evidence, not a speed win. The controller path is `probable`, not runtime proof. No end-to-end Claude, Serena, or Claude Context measurement was made. [Protocol and reproduction](docs/tool-comparison.md) · [machine/environment and summary](benchmarks/tool-comparison.json) · [all 96 query records](benchmarks/tool-comparison-queries.jsonl).
+
 **The extra value is an indexed SQL → C# → page relation report.** For supported patterns, one `data-access` query returns direct/procedure-mediated access, controller actions, page links, and confidence labels. Claude can also follow these links through multiple Grep searches and file reads; this tool packages that investigation into a repeatable CLI/MCP result.
 
 | Tool / workflow | Strong fit | Trade-off and where this project helps |
@@ -21,7 +35,7 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 | [Claude Context](https://github.com/zilliztech/claude-context) | Natural-language hybrid BM25 + dense-vector retrieval | Its documented setup uses an embedding provider and Milvus/Zilliz configuration; local providers are supported. This project's default needs no embedding API or vector server, but identifier-oriented hashing can miss paraphrases. |
 | Local Codebase Indexer | SQL Server table/procedure → C# accessors → actions/pages; schema and Git impact | Approximate static analysis with visible confidence; no Roslyn overload resolution or semantic rename. |
 
-In the bundled synthetic demo, one exact table-name search finds **3 files**. The relation report also reaches the controller and Razor page, which contain no literal table name; all **4 scenario checks pass**. The controller path is `probable`, not runtime proof. This is not an end-to-end Claude benchmark or a measured token/time saving. See [reproduction commands, evidence, and upstream sources](docs/tool-comparison.md).
+The controller and Razor page in the demo contain no literal table name; the relation report reaches them through the stored procedure and C# calls. All **4 built-in relationship checks pass**. See [source evidence and upstream feature references](docs/tool-comparison.md).
 
 ## Try it in three steps
 

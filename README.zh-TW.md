@@ -12,6 +12,20 @@
 
 ## 與 Claude 的 Grep 及類似工具比較
 
+**在本專案的 MES 測試集，相關檔案召回率比 `rg + BM25` 高 9.5～10.7 個百分點。** 內建 SQL → C# → 頁面調查情境中，關係報告涵蓋 **5/5 個必要證據檔案**，單次表名字面搜尋為 **3/5**，涵蓋率 **60% → 100%（+40 個百分點）**。
+
+| 固定搜尋測試集 | `rg + BM25` 檔案 Recall@5 | 本專案 | 差異 |
+|---|---:|---:|---:|
+| MES 風格合成資料：42 題、24 個檔案 | 81.0% | **91.7%** | **+10.7 個百分點** |
+| 相同 42 題加入干擾來源：109 個檔案 | 81.0% | **90.5%** | **+9.5 個百分點** |
+| Python 標準函式庫：12 題、85 個真實原始碼檔案 | **100.0%** | 79.2% | −20.8 個百分點 |
+
+召回率是每題找回的已知相關檔案比例，再取平均。基準實際執行 ripgrep，以通用查詢拆詞及 BM25 排序，並非 Claude agent。本專案使用預設 hashing、取 5 個結果區塊；基準取 5 個檔案，雙方都以檔案計分。共 54 個由本專案編寫的不同題目（含重跑干擾集共 96 次），不代表通用準確率保證。
+
+**減少需要閱讀的原始碼：** 在含干擾的 MES 與標準函式庫測試集，搜尋結果文字比「完整讀取同一批選中檔案」少 **94.9%／96.9% 字元**；極小的合成檔案反而多 **2.3%**。這是相對於整檔讀取的輸出大小，並非相對 Grep 摘錄或 Claude token 的節省量。
+
+**較完整報告的成本：** demo CLI 暖查詢 **244.5 ms**，單次字面 `rg` 為 **8.3 ms**（各量測 3 次取中位數；本專案首次查詢含建索引為 **266.1 ms**）。提升在於多追到 Controller／頁面；速度較慢。Controller 路徑標為 `probable`，不代表執行期證明。尚未量測完整 Claude、Serena 或 Claude Context 流程。[方法與重跑命令](docs/tool-comparison.md) · [機器環境與彙總數據](benchmarks/tool-comparison.json) · [全部 96 筆逐題紀錄](benchmarks/tool-comparison-queries.jsonl)。
+
 **這個專案多提供的是 SQL → C# → 頁面的索引關係報告。** 在支援的程式模式中，一次 `data-access` 查詢就能列出直接／透過預存程序的存取、Controller Action、頁面與信心標籤。Claude 也能透過多輪 Grep 與讀檔追出關係；此工具把這段調查整理成可重複執行的 CLI／MCP 結果。
 
 | 工具／流程 | 適合用途 | 取捨與本專案的用途 |
@@ -21,7 +35,7 @@
 | [Claude Context](https://github.com/zilliztech/claude-context) | 自然語言的 BM25＋dense vector 混合搜尋 | 官方設定含 embedding provider 與 Milvus／Zilliz，也支援本機 provider。本專案預設不需 embedding API 或向量伺服器，但 hashing 仍可能漏掉自然語言改寫。 |
 | Local Codebase Indexer | SQL Server 表／預存程序 → C# 存取者 → Action／頁面，以及 schema、Git impact | 帶有信心標籤的近似靜態分析，沒有 Roslyn 多載解析或語意 rename。 |
 
-內建合成範例的一次精確表名搜尋會找到 **3 個檔案**；關係報告還能追到沒有該表名字串的 Controller 與 Razor 頁面，**4 項情境檢查通過**。Controller 路徑標為 `probable`，不代表執行期證明。這不是 Claude 完整工作流程的效能比較，也沒有量測節省多少 token／時間。[重現命令、證據與上游資料](docs/tool-comparison.md)。
+範例的 Controller 與 Razor 頁面沒有該表名字串；關係報告透過預存程序與 C# 呼叫追到它們，**4 項內建關係檢查通過**。[原始碼證據與上游功能資料](docs/tool-comparison.md)。
 
 ## 三步開始
 

@@ -80,7 +80,7 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 
 ## SQL and legacy-source correctness (0.9.0)
 
-- Run `python -m ruff check local_codebase_indexer scripts`, `python -m mypy`, and the full pytest suite before publishing. CI covers Linux and Windows on Python 3.10, 3.12, and 3.13.
+- Run `python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py`, `python -m mypy`, and the full pytest suite before publishing. CI covers Linux and Windows on Python 3.10, 3.12, and 3.13.
 - Dependency declarations live in `pyproject.toml`; `requirements.txt` was removed to avoid drift.
 - Source decoding and context extraction handle BOM-tagged UTF-16/UTF-32. True binary files are excluded consistently by scanning and status.
 - `data-access` has additive `schema_changes` entries (`access=schema`) for table/index DDL. They are not row writers. File-level SQL changes appear in impact with before/current/after labels and source evidence.
