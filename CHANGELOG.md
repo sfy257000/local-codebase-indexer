@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Bound dynamic `sp_executesql` analysis to its SQL argument and statement; preserve uncertainty for quoted procedure names and exclude unrelated literals/column names.
+- Scope CTE exclusions to one consuming statement/batch, including omitted semicolons and UNION/INSERT SELECT and stop UPDATE/DELETE alias lookup at the next command, including commands without semicolons.
+- Preserve comma sources following JOIN predicates that use qualified `go` columns; recognize GO only as a batch separator line.
+- Restrict SQL object definitions/suggestions to SQL source files so application functions do not become tables/procedures or redirect SQL search routing.
+- Respect C#/VB6 parameter and local shadowing, invalidate overwritten SQL, and avoid interpreting query parameters as SQL. Preserve earlier valid execution evidence and known ADO declarations.
+- Add English/Traditional Chinese/Simplified Chinese tool comparisons with documented trade-offs, pinned upstream sources, and a reproducible literal-search/relation-report example.
+- Quantify those comparisons with a reproducible ripgrep + BM25 baseline, unchanged retrieval questions, raw per-query records, file-level recall/MRR, exact character denominators, and CLI evidence coverage/latency. Show stdlib losses and tiny-file output overhead alongside MES gains in all three READMEs. Add benchmark protocol regression tests and a CI artifact smoke run.
+- Index format 10 rebuilds stale parsing results on the first update. Package and Registry versions remain unchanged until a release is prepared.
+
 ## 0.9.0
 
 - Fix a first-run Windows lock-file initialization race found by concurrent-process CI; serialize index ignore-file creation.

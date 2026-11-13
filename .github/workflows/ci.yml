@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: python -m ruff check local_codebase_indexer scripts
+      - run: python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py
       - run: python -m mypy
   package:
     runs-on: ubuntu-latest
@@ -58,4 +58,21 @@ jobs:
         with:
           name: project-evaluation
           path: .ai_context/project-report.json
+          if-no-files-found: error
+
+  tool-comparison:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Reproduce lexical comparison and navigation evidence
+        run: python benchmarks/compare_tools.py --suite synthetic --repeats 1 --navigation --save comparison/report.json --details comparison/queries.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tool-comparison
+          path: comparison/
           if-no-files-found: error

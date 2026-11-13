@@ -16,7 +16,7 @@ _METHOD = re.compile(r'^\s*(?:(?:Public|Private|Friend|Static)\s+)*(Sub|Function
 _END = re.compile(r'^\s*End\s+(Sub|Function|Property)\b', re.I)
 _DECL = re.compile(r'\b(\w+)\s+As\s+(?:New\s+)?(?:ADODB\.(?:Connection|Command|Recordset)|DAO\.(?:Database|Recordset)|Database)\b', re.I)
 _ASSIGN = re.compile(r'^\s*(?:(?:Public|Private|Dim|Static|Const)\s+)*(\w+)(?:\s+As\s+\w+)?\s*=\s*(.+)$', re.I)
-_SINK = re.compile(r'\b(\w+)\s*\.\s*(Execute|Open|CommandText)\b\s*(?:=\s*|\(\s*)?(.*)', re.I)
+_SINK = re.compile(r'\b(\w+)\s*\.\s*(Execute|Open|CommandText)\b', re.I)
 
 
 @dataclass
@@ -61,6 +61,39 @@ def _statements(text: str):
             pending = ''
     if pending.strip():
         yield start, pending.strip()
+
+
+def _code_only(statement: str) -> str:
+    return re.sub(_STRING, lambda match: ' ' * len(match.group()), statement)
+
+
+def _local_bindings(statement: str) -> set[str]:
+    method = _METHOD.match(statement)
+    if method:
+        start = statement.find('(', method.end())
+        end = statement.rfind(')')
+        body = statement[start + 1:end] if start >= 0 and end > start else ''
+    else:
+        declaration = re.match(r'(?i)^(?:(?:Public|Private|Dim|Static|Const)\s+)+(.+)$', statement)
+        if not declaration:
+            return set()
+        body = declaration.group(1)
+    parts, start, depth = [], 0, 0
+    for token in re.finditer(rf'{_STRING}|[(),]', body):
+        if token.group() == '(':
+            depth += 1
+        elif token.group() == ')':
+            depth -= 1
+        elif token.group() == ',' and not depth:
+            parts.append(body[start:token.start()])
+            start = token.end()
+    parts.append(body[start:])
+    names = set()
+    for part in parts:
+        name = re.match(r'(?i)^\s*(?:(?:ByVal|ByRef|Optional|ParamArray)\s+)*(\w+)', part)
+        if name:
+            names.add(name.group(1).lower())
+    return names
 
 
 def _evaluate(expression: str, env: dict[str, tuple[str, bool]]) -> tuple[str, bool] | None:
@@ -109,10 +142,13 @@ def parse_vb6(text: str, path: str, symbol_type):
                            s.start, s.end, f'VB6 {s.name}') for s in scopes]
     globals_env: dict[str, tuple[str, bool]] = {}
     receivers_by_scope: dict[int, set[str]] = {0: set()}
+    locals_by_scope: dict[int, set[str]] = {}
     for line, statement in statements:
         scope = next((s for s in scopes if s.start <= line <= s.end), None)
         receivers_by_scope.setdefault(scope.start if scope else 0, set()).update(
-            m.group(1).lower() for m in _DECL.finditer(statement))
+            m.group(1).lower() for m in _DECL.finditer(_code_only(statement)))
+        if scope:
+            locals_by_scope.setdefault(scope.start, set()).update(_local_bindings(statement))
     accesses = []
     # Module constants are available inside every procedure regardless of declaration order.
     for line, statement in statements:
@@ -122,19 +158,21 @@ def parse_vb6(text: str, path: str, symbol_type):
                 value = _evaluate(assignment.group(2), globals_env)
                 if value:
                     globals_env[assignment.group(1).lower()] = value
-    environments = {s.start: dict(globals_env) for s in scopes}
+    environments = {s.start: {**globals_env, **{name: (HOLE, False) for name in locals_by_scope.get(s.start, set())}}
+                    for s in scopes}
     for line, statement in statements:
         scope = next((s for s in scopes if s.start <= line <= s.end), None)
         env = environments[scope.start] if scope else globals_env
-        receivers = receivers_by_scope[0] | receivers_by_scope.get(scope.start if scope else 0, set())
+        local_names = locals_by_scope.get(scope.start, set()) if scope else set()
+        receivers = (receivers_by_scope[0] - local_names) | receivers_by_scope.get(scope.start if scope else 0, set())
         owner = next((s.id for s in symbols if scope and s.start == scope.start), None)
-        sink = _SINK.search(statement)
+        sink = _SINK.search(_code_only(statement))
         assignment = _ASSIGN.match(statement) if not sink else None
         if assignment:
             value = _evaluate(assignment.group(2), env)
             env[assignment.group(1).lower()] = value if value else (HOLE, False)
         elif sink:
-            value = _evaluate(sink.group(3), env)
+            value = _evaluate(statement[sink.end():].lstrip().removeprefix('='), env)
         else:
             value = None
         if value is None:

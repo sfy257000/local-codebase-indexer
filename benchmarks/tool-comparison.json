@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "indexer_version": "0.9.0",
+  "index_format": "10",
+  "indexer_source_sha256": "cf2034c61a43bcaa92fd89bae741bc6f619c7304fceb6f79b3b569fb568a129d",
+  "sqlite_version": "3.53.1",
+  "recorded_at_utc": "2026-11-13T06:24:26.140420+00:00",
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "rg_version": "ripgrep 15.2.0 (rev e89fff89ac)",
+  "repeats": 3,
+  "indexer": "HashingEmbedder; default 5 chunks; frozen corpus; warm process",
+  "baseline": "rg case-insensitive OR candidates + BM25 token counts (k1=1.2, b=0.75); top 5 files",
+  "units": {
+    "quality": "macro file Recall@5 and file MRR@5; symbols ignored for both methods",
+    "latency": "warm indexer method excludes transport/startup; baseline includes rg subprocess + ranking",
+    "context": "exact Unicode character counts vs full reads of the same indexer-selected files; not model tokens"
+  },
+  "limitations": [
+    "Not Claude, Serena, or Claude Context end-to-end runs.",
+    "Synthetic queries/corpus/domain synonyms were authored by this project; absolute quality is optimistic.",
+    "Noisy suite repeats the same 42 questions; stdlib is real Python source with 12 authored questions.",
+    "Timings depend on the machine and are not comparable to CLI/model/agent latency."
+  ],
+  "suites": {
+    "synthetic": {
+      "queries": 42,
+      "files": 24,
+      "chunks": 89,
+      "dataset_sha256": "fb97b9127e3d2cad5df6a538abd464eaaa3b182d3db2c08c60a693f961e0204b",
+      "corpus_sha256": "50903f38b752e2f7c6b7e736f9250124b25e2984b9383017c3ab1a9fa6a1aa5f",
+      "initial_index_ms": 61.96303000251646,
+      "rg_bm25_setup_ms": 4.164333000517217,
+      "rg_bm25": {
+        "file_recall5": 0.8095238095238095,
+        "file_mrr5": 0.6686507936507936,
+        "median_query_ms": 5.725
+      },
+      "indexer": {
+        "file_recall5": 0.9166666666666666,
+        "file_mrr5": 0.8333333333333334,
+        "median_query_ms": 3.1020000000000003
+      },
+      "recall_gain_pp": 10.71428571428571,
+      "context": {
+        "returned_chars": 83044,
+        "same_files_full_read_chars": 81175,
+        "reduction_pct": -2.3024330150908545
+      }
+    },
+    "synthetic-noisy": {
+      "queries": 42,
+      "files": 109,
+      "chunks": 2774,
+      "dataset_sha256": "fb97b9127e3d2cad5df6a538abd464eaaa3b182d3db2c08c60a693f961e0204b",
+      "corpus_sha256": "fedff93c4c2074ff1986b6fb25fa61ff9bef811887938fb2e92d0692adf022fd",
+      "initial_index_ms": 1478.3140229992568,
+      "rg_bm25_setup_ms": 315.89049600006547,
+      "rg_bm25": {
+        "file_recall5": 0.8095238095238095,
+        "file_mrr5": 0.6964285714285714,
+        "median_query_ms": 11.756
+      },
+      "indexer": {
+        "file_recall5": 0.9047619047619048,
+        "file_mrr5": 0.8134920634920635,
+        "median_query_ms": 94.509
+      },
+      "recall_gain_pp": 9.523809523809524,
+      "context": {
+        "returned_chars": 86339,
+        "same_files_full_read_chars": 1700971,
+        "reduction_pct": 94.92413450905394
+      }
+    },
+    "stdlib": {
+      "queries": 12,
+      "files": 85,
+      "chunks": 2685,
+      "dataset_sha256": "f15c81222fbe3d8e56a74d5374a6619819e559398c146dd02318679ff2c875d8",
+      "corpus_sha256": "5048b9e07395d9acd91037d20877666e8aafb816a83736fae301093acc3b2b81",
+      "initial_index_ms": 1389.8237880021043,
+      "rg_bm25_setup_ms": 301.4789689987083,
+      "rg_bm25": {
+        "file_recall5": 1.0,
+        "file_mrr5": 0.8194444444444444,
+        "median_query_ms": 11.917
+      },
+      "indexer": {
+        "file_recall5": 0.7916666666666666,
+        "file_mrr5": 0.7222222222222222,
+        "median_query_ms": 74.76650000000001
+      },
+      "recall_gain_pp": -20.833333333333336,
+      "context": {
+        "returned_chars": 31984,
+        "same_files_full_read_chars": 1039878,
+        "reduction_pct": 96.92425457601757
+      }
+    }
+  },
+  "navigation": {
+    "sample_kind": "bundled synthetic fixture; five required evidence files",
+    "task_sha256": "70a8fc5a97e691d14d02c7f8050268b68e52368476dc9246728b165150d44957",
+    "target": "Sales_OrderHeader",
+    "required_files": [
+      "Controllers/OrdersController.cs",
+      "Data/OrderRepository.cs",
+      "Sql/Sales_OrderHeader.sql",
+      "Sql/usp_ApproveOrder.sql",
+      "Views/Orders/Details.cshtml"
+    ],
+    "literal_rg": {
+      "files": [
+        "Data/OrderRepository.cs",
+        "Sql/Sales_OrderHeader.sql",
+        "Sql/usp_ApproveOrder.sql"
+      ],
+      "coverage": 0.6,
+      "cli_ms": [
+        8.336,
+        8.359,
+        8.083
+      ]
+    },
+    "indexer": {
+      "files": [
+        "Controllers/OrdersController.cs",
+        "Data/OrderRepository.cs",
+        "Sql/Sales_OrderHeader.sql",
+        "Sql/usp_ApproveOrder.sql",
+        "Views/Orders/Details.cshtml"
+      ],
+      "coverage": 1.0,
+      "initial_cli_ms": 266.124,
+      "warm_cli_ms": [
+        247.81,
+        244.46,
+        239.947
+      ],
+      "program_confidence": [
+        "probable"
+      ]
+    },
+    "coverage_gain_pp": 40.0,
+    "limitation": "One table-name grep call, not a multi-step agent or expert-grep workflow; five task-specific required files, not all potentially relevant source."
+  }
+}
