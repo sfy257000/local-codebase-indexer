@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.1
+
 - Bound dynamic `sp_executesql` analysis to its SQL argument and statement; preserve uncertainty for quoted procedure names and exclude unrelated literals/column names.
 - Scope CTE exclusions to one consuming statement/batch, including omitted semicolons and UNION/INSERT SELECT and stop UPDATE/DELETE alias lookup at the next command, including commands without semicolons.
 - Preserve comma sources following JOIN predicates that use qualified `go` columns; recognize GO only as a batch separator line.

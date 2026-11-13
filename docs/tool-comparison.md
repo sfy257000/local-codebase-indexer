@@ -4,7 +4,7 @@ Local Codebase Indexer is useful when the question crosses SQL Server definition
 
 ## Measured differences
 
-Recorded on 2026-11-13 with Python 3.12.14, SQLite 3.53.1, ripgrep 15.2.0, Linux x86_64, default `HashingEmbedder`, package source version 0.9.0 and index format 10. [Summary and source/corpus fingerprints](../benchmarks/tool-comparison.json) and [all query-level records](../benchmarks/tool-comparison-queries.jsonl) are committed alongside the runner. Timings describe this machine, not a performance guarantee.
+Recorded on 2026-11-13 with Python 3.12.14, SQLite 3.53.1, ripgrep 15.2.0, Linux x86_64, default `HashingEmbedder`, pre-0.9.1 source (then labeled package version 0.9.0) and index format 10. The recorded version and fingerprint are preserved rather than relabeled after the release version bump. [Summary and source/corpus fingerprints](../benchmarks/tool-comparison.json) and [all query-level records](../benchmarks/tool-comparison-queries.jsonl) are committed alongside the runner. Timings describe this machine, not a performance guarantee.
 
 | Retrieval suite | Questions / files | `rg + BM25` file Recall@5 | Indexer file Recall@5 | Difference | File MRR@5: baseline → indexer |
 |---|---:|---:|---:|---:|---:|
@@ -46,7 +46,7 @@ Retrieval-suite backend timings are deliberately separate: indexer warm in-proce
 
 ### Run the recorded protocol
 
-Use this PR's checkout, Python 3.12 for the closest corpus match, and install ripgrep on PATH. Ripgrep is only needed by this optional benchmark, not by the product.
+Use the repository checkout, Python 3.12 for the closest corpus match, and install ripgrep on PATH. Ripgrep is only needed by this optional benchmark, not by the product.
 
 ```bash
 python -m pip install -e ".[dev]"

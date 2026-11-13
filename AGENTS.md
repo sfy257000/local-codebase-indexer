@@ -88,9 +88,9 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 - Explicit negations in `.ai_context/ignore` can include default source directories such as `!bin/` and `!bin/**`, overriding `.gitignore`. Include excluded parents first. `.git`, `.svn`, `.hg`, and `.ai_context` remain excluded.
 - Keep `query.py` as the facade/search implementation; navigation, source context, and rendering live in `relations.py`, `context.py`, and `rendering.py`. Legacy public imports from `query` remain supported.
 
-## Pending correctness review
+## SQL provenance and tool comparison (0.9.1)
 
 - SQL statement/batch boundaries and lexical bindings must not manufacture confirmed access from unrelated literals or shadowed parameters. Keep regression coverage in `tests/test_provenance_boundaries.py`.
 - SQL object definitions come only from SQL sources; application symbol navigation still includes Python/JS functions.
-- Index format 10 invalidates older parsed edges. This does not change the package/Registry version or publish a release.
+- Index format 10 invalidates older parsed edges and rebuilds them on the first update. Keep package and Registry versions synchronized when preparing a release.
 - Tool comparisons live in `docs/tool-comparison.md`; keep language READMEs in sync, cite upstream capabilities, and distinguish a literal-search baseline from a full Claude workflow. Do not claim measured speed/token/accuracy superiority without a corresponding experiment.
