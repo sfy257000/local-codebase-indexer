@@ -5,12 +5,12 @@ import base64
 import hashlib
 import json
 
-ALGORITHM = 'rrf-complete-v1'
+ALGORITHM = 'rrf-diverse-v2'
 
 
 def search_key(query: str, file_pattern: str | None, language: str | None,
-               synonyms_version: str, embedder: str) -> str:
-    payload = [ALGORITHM, query, file_pattern, language, synonyms_version, embedder]
+               synonyms_version: str, embedder: str, mode: str = "hybrid") -> str:
+    payload = [ALGORITHM, query, file_pattern, language, synonyms_version, embedder, mode]
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False).encode('utf-8')).hexdigest()
 
 

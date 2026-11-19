@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS data_access (
     via TEXT NOT NULL,
     confidence TEXT NOT NULL,
     evidence TEXT NOT NULL DEFAULT '',
-    detail TEXT NOT NULL DEFAULT ''
+    detail TEXT NOT NULL DEFAULT '',
+    target_identity TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_da_target ON data_access(target_key);
 CREATE INDEX IF NOT EXISTS idx_da_file ON data_access(file_path);
@@ -151,7 +152,7 @@ CREATE TABLE IF NOT EXISTS index_failures (
 """
 
 # Bump when the stored data layout or parsing output changes; a mismatch triggers a full rebuild.
-INDEX_VERSION = "10"
+INDEX_VERSION = "11"
 
 
 def index_dir(root: str) -> str:
@@ -208,6 +209,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col, decl in (("type_name", "TEXT"), ("min_args", "INTEGER"), ("max_args", "INTEGER")):
         if col not in have:
             conn.execute(f"ALTER TABLE symbols ADD COLUMN {col} {decl}")
+    for table, column in (('symbols', 'sql_identity'), ('data_access', 'target_identity')):
+        if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

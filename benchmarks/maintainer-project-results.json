@@ -1,0 +1,1251 @@
+{
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "schema_version": 1,
+  "recorded_at": "2026-11-19T08:23:23.104366+00:00",
+  "dataset_sha256": "5145407aaa6374493203d51af826e5f1c9d126ee0c870ba78a3f058f4ce73481",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "authorship": "12 project-authored source-reviewed navigation questions on a repository supplied by the maintainer; not independent user questions or SQL impact validation. Frozen before the first retrieval run.",
+  "projects": {
+    "island-inline-watcher": {
+      "repository": "https://github.com/sfy257000/island-inline-watcher.git",
+      "commit": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+      "baseline": {
+        "schema_version": 1,
+        "package_version": "0.9.1",
+        "dataset_sha256": "d1b5f7c85fcfb68852deefad1219b5ffcdf38e2ffc3be2a10859ce5dd8da7ba0",
+        "root": "/tmp/indexer-real-eval-c9a4ylad/island-inline-watcher-baseline",
+        "index_revision": "26db8d1f766847739043c9abb3cd209f",
+        "embedder": "hashing-384-v1",
+        "synonyms_version": "missing",
+        "index_ms": 215.173,
+        "metrics": {
+          "queries": 12,
+          "limit": 5,
+          "recall_at_k": 0.5833333333333334,
+          "hit_rate_at_k": 0.5833333333333334,
+          "mrr": 0.475,
+          "p50_ms": 5.0485,
+          "p95_ms": 8.546,
+          "mean_estimated_tokens": 952.25
+        },
+        "rows": [
+          {
+            "id": "island-01",
+            "query": "Accept only a direct email reply whose first line contains a four digit verification code",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 8.546,
+            "estimated_tokens": 976,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "parse_reply"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": null
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              }
+            ]
+          },
+          {
+            "id": "island-02",
+            "query": "Verify that an email sender and In-Reply-To header match the current notification",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 5.44,
+            "estimated_tokens": 832,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_wrong_sender_or_other_notification_is_rejected"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_matching_reply_preserves_leading_zeroes"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              }
+            ]
+          },
+          {
+            "id": "island-03",
+            "query": "Refresh the Gmail mailbox before searching for newly arrived replies",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.2,
+            "first_relevant_rank": 5,
+            "latency_ms": 3.363,
+            "estimated_tokens": 1009,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_expired_reply_wait_never_submits_or_connects"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              }
+            ]
+          },
+          {
+            "id": "island-04",
+            "query": "Retry a disconnected mailbox while respecting the original verification deadline",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 3.714,
+            "estimated_tokens": 1115,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_cancelled_retry_does_not_reconnect"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_reply_reconnects_then_pastes_code_into_original_sms_dialog_once"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_expired_reply_wait_never_submits_or_connects"
+              }
+            ]
+          },
+          {
+            "id": "island-05",
+            "query": "Open Gmail All Mail in read only mode",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 6.305,
+            "estimated_tokens": 938,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "MailSettings.load"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.test_existing_single_recipient_settings_remain_valid"
+              }
+            ]
+          },
+          {
+            "id": "island-06",
+            "query": "Keep installed application data separate from bundled executable resources",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 4.833,
+            "estimated_tokens": 932,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_explicit_data_override_supports_isolated_checks"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_first_save_creates_data_directory_and_preserves_other_settings"
+              },
+              {
+                "file": "tools/test_installer.ps1",
+                "symbol": null
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_frozen_data_is_independent_of_install_directory"
+              }
+            ]
+          },
+          {
+            "id": "island-07",
+            "query": "Find the installed Google Chrome executable on Windows",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 2.666,
+            "estimated_tokens": 644,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": ".github/workflows/windows-build.yml",
+                "symbol": null
+              },
+              {
+                "file": "windows_entry.py",
+                "symbol": null
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              },
+              {
+                "file": ".github/workflows/windows-build.yml",
+                "symbol": null
+              }
+            ]
+          },
+          {
+            "id": "island-08",
+            "query": "Validate that a date uses YYYY-MM-DD and is a real calendar date",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 4.978,
+            "estimated_tokens": 1029,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "parse_date"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "WorkerTests.test_unrestricted_worker_keeps_real_selected_day_and_deduplicates"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_calendar_retries_opening_click_that_did_not_expand"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_calendar_reaches_later_availability_across_empty_months"
+              },
+              {
+                "file": "tools/package_source.py",
+                "symbol": "validate_paths"
+              }
+            ]
+          },
+          {
+            "id": "island-09",
+            "query": "Where are settings saved atomically without interpolating dollar signs?",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.5,
+            "first_relevant_rank": 2,
+            "latency_ms": 4.414,
+            "estimated_tokens": 994,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "read_saved_settings"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "write_saved_settings"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "BookingProfileTests.test_old_profile_without_salutation_loads_with_other"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_inline_modal_without_px_id_is_detected"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "MailSettings.load"
+              }
+            ]
+          },
+          {
+            "id": "island-10",
+            "query": "從查詢結果篩選符合開始與結束時間的可訂位時段",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 8.083,
+            "estimated_tokens": 1001,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.stop_query"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_query_timeout_ends_current_round_and_can_retry"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              }
+            ]
+          },
+          {
+            "id": "island-11",
+            "query": "在哪裡檢查訂位摘要的分店、日期、人數與桌型？",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 6.449,
+            "estimated_tokens": 1078,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.__init__"
+              },
+              {
+                "file": "diagnose_inline.py",
+                "symbol": "main"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.read_query"
+              },
+              {
+                "file": "README.md",
+                "symbol": null
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_calendar_reaches_later_availability_across_empty_months"
+              }
+            ]
+          },
+          {
+            "id": "island-12",
+            "query": "Throttle browser actions and stop when human verification is detected",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 5.119,
+            "estimated_tokens": 879,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "NativePage._check_verification"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "active_browser_stop"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_inline_modal_without_px_id_is_detected"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_captcha_during_action_gap_prevents_next_click"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_captcha_stops_at_each_booking_stage"
+              }
+            ]
+          }
+        ],
+        "baseline_recall_delta": null,
+        "passed": true,
+        "failures": [],
+        "note": "Tokens are estimated as ceil(rendered characters / 4), not model-specific tokenizer counts.",
+        "retrieval_mode": "hybrid",
+        "files": 24,
+        "chunks": 267,
+        "corpus_sha256": "0776d7823e058a62b14e1e2d1ce5a8ad254aa54c39b5d85f5a827debcde156aa",
+        "source_sha256": "423b366711d4d3c74d7a006e2f7c4355c8fd371e44ff3873859fdf22a5324820",
+        "python": "3.12.14"
+      },
+      "candidate": {
+        "schema_version": 1,
+        "package_version": "0.9.1",
+        "dataset_sha256": "d1b5f7c85fcfb68852deefad1219b5ffcdf38e2ffc3be2a10859ce5dd8da7ba0",
+        "root": "/tmp/indexer-real-eval-c9a4ylad/island-inline-watcher-candidate",
+        "index_revision": "3959950f96c445b6989877cceae0c4b6",
+        "embedder": "hashing-384-v1",
+        "synonyms_version": "missing",
+        "index_ms": 248.973,
+        "metrics": {
+          "queries": 12,
+          "limit": 5,
+          "recall_at_k": 0.6666666666666666,
+          "hit_rate_at_k": 0.6666666666666666,
+          "mrr": 0.48194444444444445,
+          "p50_ms": 6.0135000000000005,
+          "p95_ms": 9.461,
+          "mean_estimated_tokens": 928.6666666666666
+        },
+        "rows": [
+          {
+            "id": "island-01",
+            "query": "Accept only a direct email reply whose first line contains a four digit verification code",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 9.201,
+            "estimated_tokens": 976,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "parse_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": null
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              }
+            ]
+          },
+          {
+            "id": "island-02",
+            "query": "Verify that an email sender and In-Reply-To header match the current notification",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 5.297,
+            "estimated_tokens": 915,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_wrong_sender_or_other_notification_is_rejected"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_matching_reply_preserves_leading_zeroes"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "notify_and_verify_booking"
+              }
+            ]
+          },
+          {
+            "id": "island-03",
+            "query": "Refresh the Gmail mailbox before searching for newly arrived replies",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.25,
+            "first_relevant_rank": 4,
+            "latency_ms": 3.628,
+            "estimated_tokens": 1009,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_expired_reply_wait_never_submits_or_connects"
+              }
+            ]
+          },
+          {
+            "id": "island-04",
+            "query": "Retry a disconnected mailbox while respecting the original verification deadline",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 4.155,
+            "estimated_tokens": 1029,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_cancelled_retry_does_not_reconnect"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_reply_reconnects_then_pastes_code_into_original_sms_dialog_once"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "verification_result"
+              }
+            ]
+          },
+          {
+            "id": "island-05",
+            "query": "Open Gmail All Mail in read only mode",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 9.461,
+            "estimated_tokens": 938,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.test_existing_single_recipient_settings_remain_valid"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "MailSettings.load"
+              }
+            ]
+          },
+          {
+            "id": "island-06",
+            "query": "Keep installed application data separate from bundled executable resources",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.2,
+            "first_relevant_rank": 5,
+            "latency_ms": 6.425,
+            "estimated_tokens": 891,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_explicit_data_override_supports_isolated_checks"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_first_save_creates_data_directory_and_preserves_other_settings"
+              },
+              {
+                "file": "tools/test_installer.ps1",
+                "symbol": null
+              },
+              {
+                "file": "app_paths.py",
+                "symbol": "data_directory"
+              }
+            ]
+          },
+          {
+            "id": "island-07",
+            "query": "Find the installed Google Chrome executable on Windows",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 3.429,
+            "estimated_tokens": 644,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": ".github/workflows/windows-build.yml",
+                "symbol": null
+              },
+              {
+                "file": "windows_entry.py",
+                "symbol": null
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              },
+              {
+                "file": ".github/workflows/windows-build.yml",
+                "symbol": null
+              }
+            ]
+          },
+          {
+            "id": "island-08",
+            "query": "Validate that a date uses YYYY-MM-DD and is a real calendar date",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 8.115,
+            "estimated_tokens": 988,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "parse_date"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "WorkerTests.test_unrestricted_worker_keeps_real_selected_day_and_deduplicates"
+              },
+              {
+                "file": "tools/package_source.py",
+                "symbol": "validate_paths"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_calendar_retries_opening_click_that_did_not_expand"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "select_booking_date"
+              }
+            ]
+          },
+          {
+            "id": "island-09",
+            "query": "Where are settings saved atomically without interpolating dollar signs?",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.3333333333333333,
+            "first_relevant_rank": 3,
+            "latency_ms": 5.249,
+            "estimated_tokens": 955,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "read_saved_settings"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "BookingProfileTests.test_old_profile_without_salutation_loads_with_other"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "write_saved_settings"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_inline_modal_without_px_id_is_detected"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.settings"
+              }
+            ]
+          },
+          {
+            "id": "island-10",
+            "query": "從查詢結果篩選符合開始與結束時間的可訂位時段",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 9.252,
+            "estimated_tokens": 842,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_query_timeout_ends_current_round_and_can_retry"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.stop_query"
+              },
+              {
+                "file": "native_browser.py",
+                "symbol": "NativePage.query_selector"
+              }
+            ]
+          },
+          {
+            "id": "island-11",
+            "query": "在哪裡檢查訂位摘要的分店、日期、人數與桌型？",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 8.209,
+            "estimated_tokens": 1078,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.__init__"
+              },
+              {
+                "file": "diagnose_inline.py",
+                "symbol": "main"
+              },
+              {
+                "file": "README.md",
+                "symbol": null
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_calendar_reaches_later_availability_across_empty_months"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.read_query"
+              }
+            ]
+          },
+          {
+            "id": "island-12",
+            "query": "Throttle browser actions and stop when human verification is detected",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 5.602,
+            "estimated_tokens": 879,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "NativePage._check_verification"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "active_browser_stop"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_inline_modal_without_px_id_is_detected"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_captcha_during_action_gap_prevents_next_click"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_captcha_stops_at_each_booking_stage"
+              }
+            ]
+          }
+        ],
+        "baseline_recall_delta": null,
+        "passed": true,
+        "failures": [],
+        "note": "Tokens are estimated as ceil(rendered characters / 4), not model-specific tokenizer counts.",
+        "retrieval_mode": "hybrid",
+        "files": 24,
+        "chunks": 267,
+        "corpus_sha256": "0776d7823e058a62b14e1e2d1ce5a8ad254aa54c39b5d85f5a827debcde156aa",
+        "source_sha256": "73e5e47776c9587309535030ec41949acacbec6af63c216bb94843460847773b",
+        "python": "3.12.14"
+      },
+      "candidate_lexical": {
+        "schema_version": 1,
+        "package_version": "0.9.1",
+        "dataset_sha256": "d1b5f7c85fcfb68852deefad1219b5ffcdf38e2ffc3be2a10859ce5dd8da7ba0",
+        "root": "/tmp/indexer-real-eval-c9a4ylad/island-inline-watcher-candidate_lexical",
+        "index_revision": "74038a9e9a4b418ca019820301b82413",
+        "embedder": "hashing-384-v1",
+        "synonyms_version": "missing",
+        "index_ms": 194.649,
+        "metrics": {
+          "queries": 12,
+          "limit": 5,
+          "recall_at_k": 0.6666666666666666,
+          "hit_rate_at_k": 0.6666666666666666,
+          "mrr": 0.4861111111111111,
+          "p50_ms": 3.4305000000000003,
+          "p95_ms": 7.138,
+          "mean_estimated_tokens": 1008.5833333333334
+        },
+        "rows": [
+          {
+            "id": "island-01",
+            "query": "Accept only a direct email reply whose first line contains a four digit verification code",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 7.138,
+            "estimated_tokens": 1109,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "parse_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_reply_reconnects_then_pastes_code_into_original_sms_dialog_once"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              }
+            ]
+          },
+          {
+            "id": "island-02",
+            "query": "Verify that an email sender and In-Reply-To header match the current notification",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 3.716,
+            "estimated_tokens": 1018,
+            "results": [
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "reply"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_wrong_sender_or_other_notification_is_rejected"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "notify_and_verify_booking"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_search_filters_recent_sender_then_fetches_only_matching_reply_body"
+              }
+            ]
+          },
+          {
+            "id": "island-03",
+            "query": "Refresh the Gmail mailbox before searching for newly arrived replies",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.25,
+            "first_relevant_rank": 4,
+            "latency_ms": 3.037,
+            "estimated_tokens": 1098,
+            "results": [
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_new_reply_is_visible_only_after_refreshing_the_held_mailbox"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_reply"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_reply_reconnects_then_pastes_code_into_original_sms_dialog_once"
+              }
+            ]
+          },
+          {
+            "id": "island-04",
+            "query": "Retry a disconnected mailbox while respecting the original verification deadline",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 3.278,
+            "estimated_tokens": 1160,
+            "results": [
+              {
+                "file": "booking_verification.py",
+                "symbol": "wait_for_reply"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_cancelled_retry_does_not_reconnect"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_reply_reconnects_then_pastes_code_into_original_sms_dialog_once"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "ReplyTests.test_failed_mailbox_refresh_requests_reconnection"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "find_challenge"
+              }
+            ]
+          },
+          {
+            "id": "island-05",
+            "query": "Open Gmail All Mail in read only mode",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.3333333333333333,
+            "first_relevant_rank": 3,
+            "latency_ms": 3.583,
+            "estimated_tokens": 1098,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.test_retry_only_failed_recipient_and_notify_new_slots_to_everyone"
+              },
+              {
+                "file": "booking_verification.py",
+                "symbol": "gmail_mailbox"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.open_mail_settings"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.test_each_recipient_gets_all_matching_dates_without_other_addresses"
+              }
+            ]
+          },
+          {
+            "id": "island-06",
+            "query": "Keep installed application data separate from bundled executable resources",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 0.25,
+            "first_relevant_rank": 4,
+            "latency_ms": 3.096,
+            "estimated_tokens": 893,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_explicit_data_override_supports_isolated_checks"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "NativeBrowserTests.test_sms_nodes_keep_identity_when_form_is_replaced"
+              },
+              {
+                "file": "app_paths.py",
+                "symbol": "data_directory"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_frozen_data_is_independent_of_install_directory"
+              }
+            ]
+          },
+          {
+            "id": "island-07",
+            "query": "Find the installed Google Chrome executable on Windows",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 2.362,
+            "estimated_tokens": 830,
+            "results": [
+              {
+                "file": "native_browser.py",
+                "symbol": "chrome_executable"
+              },
+              {
+                "file": "docs/windows-packaging.md",
+                "symbol": null
+              },
+              {
+                "file": ".github/workflows/windows-build.yml",
+                "symbol": null
+              },
+              {
+                "file": "tools/scan_windows.ps1",
+                "symbol": null
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              }
+            ]
+          },
+          {
+            "id": "island-08",
+            "query": "Validate that a date uses YYYY-MM-DD and is a real calendar date",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 3.137,
+            "estimated_tokens": 1048,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "parse_date"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "WorkerTests.test_unrestricted_worker_keeps_real_selected_day_and_deduplicates"
+              },
+              {
+                "file": "tools/package_source.py",
+                "symbol": "validate_paths"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "calendar_dates"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_unrestricted_calendar_discovers_today_when_selected_month_is_missing"
+              }
+            ]
+          },
+          {
+            "id": "island-09",
+            "query": "Where are settings saved atomically without interpolating dollar signs?",
+            "recall_at_k": 1.0,
+            "reciprocal_rank": 1.0,
+            "first_relevant_rank": 1,
+            "latency_ms": 2.852,
+            "estimated_tokens": 1029,
+            "results": [
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "write_saved_settings"
+              },
+              {
+                "file": "tests/test_booking_verification.py",
+                "symbol": "BookingProfileTests.test_old_profile_without_salutation_loads_with_other"
+              },
+              {
+                "file": "tests/test_packaging.py",
+                "symbol": "PackagingTests.test_first_save_creates_data_directory_and_preserves_other_settings"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "read_saved_settings"
+              },
+              {
+                "file": "tests/test_mail.py",
+                "symbol": "MailTests.test_existing_single_recipient_settings_remain_valid"
+              }
+            ]
+          },
+          {
+            "id": "island-10",
+            "query": "從查詢結果篩選符合開始與結束時間的可訂位時段",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 5.988,
+            "estimated_tokens": 936,
+            "results": [
+              {
+                "file": "README.md",
+                "symbol": null
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "run_query"
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "WatcherWindow.__init__"
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              }
+            ]
+          },
+          {
+            "id": "island-11",
+            "query": "在哪裡檢查訂位摘要的分店、日期、人數與桌型？",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 4.873,
+            "estimated_tokens": 968,
+            "results": [
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              },
+              {
+                "file": "README.md",
+                "symbol": null
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "start_booking"
+              },
+              {
+                "file": "docs/windows-validation-2026-11-10.md",
+                "symbol": null
+              },
+              {
+                "file": "diagnose_inline.py",
+                "symbol": "main"
+              }
+            ]
+          },
+          {
+            "id": "island-12",
+            "query": "Throttle browser actions and stop when human verification is detected",
+            "recall_at_k": 0.0,
+            "reciprocal_rank": 0.0,
+            "first_relevant_rank": null,
+            "latency_ms": 4.579,
+            "estimated_tokens": 916,
+            "results": [
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_inline_modal_without_px_id_is_detected"
+              },
+              {
+                "file": "native_browser.py",
+                "symbol": "NativePage._check_verification"
+              },
+              {
+                "file": "island_inline_watcher.py",
+                "symbol": "active_browser_stop"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_captcha_stops_at_each_booking_stage"
+              },
+              {
+                "file": "tests/test_browser_flow.py",
+                "symbol": "BrowserInteractions.test_action_spacing_and_cancellation"
+              }
+            ]
+          }
+        ],
+        "baseline_recall_delta": null,
+        "passed": true,
+        "failures": [],
+        "note": "Tokens are estimated as ceil(rendered characters / 4), not model-specific tokenizer counts.",
+        "retrieval_mode": "lexical",
+        "files": 24,
+        "chunks": 267,
+        "corpus_sha256": "0776d7823e058a62b14e1e2d1ce5a8ad254aa54c39b5d85f5a827debcde156aa",
+        "source_sha256": "73e5e47776c9587309535030ec41949acacbec6af63c216bb94843460847773b",
+        "python": "3.12.14"
+      }
+    }
+  },
+  "overall": {
+    "baseline": {
+      "queries": 12,
+      "recall_at_5": 0.5833333333333334,
+      "mrr": 0.475
+    },
+    "candidate": {
+      "queries": 12,
+      "recall_at_5": 0.6666666666666666,
+      "mrr": 0.48194444444444445
+    },
+    "candidate_lexical": {
+      "queries": 12,
+      "recall_at_5": 0.6666666666666666,
+      "mrr": 0.4861111111111111
+    }
+  },
+  "limitations": [
+    "Project-authored source-reviewed questions, not independent users or end-to-end agent tasks.",
+    "Retrieval measures file+symbol relevance, not SQL impact precision, runtime execution, or investigation-time savings.",
+    "Single run per question; latency includes the first uncached retrieval and is machine-specific."
+  ],
+  "passed": true
+}

@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "authorship": "12 project-authored source-reviewed navigation questions on a repository supplied by the maintainer; not independent user questions or SQL impact validation. Frozen before the first retrieval run.",
+  "frozen_before_first_run": true,
+  "projects": [
+    {
+      "id": "island-inline-watcher",
+      "repository": "https://github.com/sfy257000/island-inline-watcher.git",
+      "commit": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+      "license": "MIT",
+      "version": 1,
+      "queries": [
+        {
+          "id": "island-01",
+          "query": "Accept only a direct email reply whose first line contains a four digit verification code",
+          "relevant": [
+            {
+              "file": "booking_verification.py",
+              "symbol": "parse_reply"
+            }
+          ]
+        },
+        {
+          "id": "island-02",
+          "query": "Verify that an email sender and In-Reply-To header match the current notification",
+          "relevant": [
+            {
+              "file": "booking_verification.py",
+              "symbol": "matches_reply"
+            }
+          ]
+        },
+        {
+          "id": "island-03",
+          "query": "Refresh the Gmail mailbox before searching for newly arrived replies",
+          "relevant": [
+            {
+              "file": "booking_verification.py",
+              "symbol": "find_reply"
+            }
+          ]
+        },
+        {
+          "id": "island-04",
+          "query": "Retry a disconnected mailbox while respecting the original verification deadline",
+          "relevant": [
+            {
+              "file": "booking_verification.py",
+              "symbol": "wait_for_reply"
+            }
+          ]
+        },
+        {
+          "id": "island-05",
+          "query": "Open Gmail All Mail in read only mode",
+          "relevant": [
+            {
+              "file": "booking_verification.py",
+              "symbol": "gmail_mailbox"
+            }
+          ]
+        },
+        {
+          "id": "island-06",
+          "query": "Keep installed application data separate from bundled executable resources",
+          "relevant": [
+            {
+              "file": "app_paths.py",
+              "symbol": "data_directory"
+            }
+          ]
+        },
+        {
+          "id": "island-07",
+          "query": "Find the installed Google Chrome executable on Windows",
+          "relevant": [
+            {
+              "file": "native_browser.py",
+              "symbol": "chrome_executable"
+            }
+          ]
+        },
+        {
+          "id": "island-08",
+          "query": "Validate that a date uses YYYY-MM-DD and is a real calendar date",
+          "relevant": [
+            {
+              "file": "island_inline_watcher.py",
+              "symbol": "parse_date"
+            }
+          ]
+        },
+        {
+          "id": "island-09",
+          "query": "Where are settings saved atomically without interpolating dollar signs?",
+          "relevant": [
+            {
+              "file": "island_inline_watcher.py",
+              "symbol": "write_saved_settings"
+            }
+          ]
+        },
+        {
+          "id": "island-10",
+          "query": "從查詢結果篩選符合開始與結束時間的可訂位時段",
+          "relevant": [
+            {
+              "file": "island_inline_watcher.py",
+              "symbol": "matching_times"
+            }
+          ]
+        },
+        {
+          "id": "island-11",
+          "query": "在哪裡檢查訂位摘要的分店、日期、人數與桌型？",
+          "relevant": [
+            {
+              "file": "island_inline_watcher.py",
+              "symbol": "booking_summary_matches"
+            }
+          ]
+        },
+        {
+          "id": "island-12",
+          "query": "Throttle browser actions and stop when human verification is detected",
+          "relevant": [
+            {
+              "file": "island_inline_watcher.py",
+              "symbol": "BrowserFlow.perform"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

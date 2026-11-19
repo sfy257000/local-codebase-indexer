@@ -1,0 +1,1034 @@
+{
+  "schema_version": 1,
+  "authorship": "100 source-reviewed project-authored navigation questions over three real public C# repositories; not independently authored user tasks or end-to-end SQL impact accuracy.",
+  "frozen_before_first_run": true,
+  "projects": [
+    {
+      "id": "Dapper",
+      "repository": "https://github.com/DapperLib/Dapper.git",
+      "commit": "eb47546a408bbf6c178bda4f04dc205bc51ffbfe",
+      "license": "Apache-2.0",
+      "version": 1,
+      "queries": [
+        {
+          "id": "dapper-01",
+          "query": "Where are all cached SQL query plans cleared?",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.PurgeQueryCache"
+            }
+          ]
+        },
+        {
+          "id": "dapper-02",
+          "query": "Remove cached query plans for one mapped result type",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.PurgeQueryCacheByType"
+            }
+          ]
+        },
+        {
+          "id": "dapper-03",
+          "query": "Count the SQL entries currently held in the query cache",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.GetCachedSQLCount"
+            }
+          ]
+        },
+        {
+          "id": "dapper-04",
+          "query": "Register a custom database type mapping for a CLR type",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.AddTypeMap"
+            }
+          ]
+        },
+        {
+          "id": "dapper-05",
+          "query": "Register a custom handler for reading and writing a CLR value",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.AddTypeHandler"
+            }
+          ]
+        },
+        {
+          "id": "dapper-06",
+          "query": "Look up the DbType used for a parameter CLR type",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.LookupDbType"
+            }
+          ]
+        },
+        {
+          "id": "dapper-07",
+          "query": "Execute a SQL command and return the number of affected rows",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.Execute"
+            }
+          ]
+        },
+        {
+          "id": "dapper-08",
+          "query": "Execute a command that returns a single scalar value",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.ExecuteScalar"
+            }
+          ]
+        },
+        {
+          "id": "dapper-09",
+          "query": "Read rows from a database query into mapped objects",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.Query"
+            }
+          ]
+        },
+        {
+          "id": "dapper-10",
+          "query": "Read the first database row and throw if there are no rows",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.QueryFirst"
+            }
+          ]
+        },
+        {
+          "id": "dapper-11",
+          "query": "Read a single result and reject multiple database rows",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.QuerySingle"
+            }
+          ]
+        },
+        {
+          "id": "dapper-12",
+          "query": "Execute SQL that returns multiple result grids",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.cs",
+              "symbol": "SqlMapper.QueryMultiple"
+            }
+          ]
+        },
+        {
+          "id": "dapper-13",
+          "query": "Run an asynchronous database query returning mapped rows",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Async.cs",
+              "symbol": "SqlMapper.QueryAsync"
+            }
+          ]
+        },
+        {
+          "id": "dapper-14",
+          "query": "Execute non-query SQL asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Async.cs",
+              "symbol": "SqlMapper.ExecuteAsync"
+            }
+          ]
+        },
+        {
+          "id": "dapper-15",
+          "query": "Read the first row asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Async.cs",
+              "symbol": "SqlMapper.QueryFirstAsync"
+            }
+          ]
+        },
+        {
+          "id": "dapper-16",
+          "query": "Execute a scalar database command asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Async.cs",
+              "symbol": "SqlMapper.ExecuteScalarAsync"
+            }
+          ]
+        },
+        {
+          "id": "dapper-17",
+          "query": "Stream database results as an asynchronous unbuffered sequence",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Async.cs",
+              "symbol": "SqlMapper.QueryUnbufferedAsync"
+            }
+          ]
+        },
+        {
+          "id": "dapper-18",
+          "query": "Combine a parameter object with the existing dynamic parameter bag",
+          "relevant": [
+            {
+              "file": "Dapper/DynamicParameters.cs",
+              "symbol": "DynamicParameters.AddDynamicParams"
+            }
+          ]
+        },
+        {
+          "id": "dapper-19",
+          "query": "Add a named dynamic SQL parameter with direction and size",
+          "relevant": [
+            {
+              "file": "Dapper/DynamicParameters.cs",
+              "symbol": "DynamicParameters.Add"
+            }
+          ]
+        },
+        {
+          "id": "dapper-20",
+          "query": "Read a named value from the dynamic parameter bag",
+          "relevant": [
+            {
+              "file": "Dapper/DynamicParameters.cs",
+              "symbol": "DynamicParameters.Get"
+            }
+          ]
+        },
+        {
+          "id": "dapper-21",
+          "query": "Bind an output parameter to an object member",
+          "relevant": [
+            {
+              "file": "Dapper/DynamicParameters.cs",
+              "symbol": "DynamicParameters.Output"
+            }
+          ]
+        },
+        {
+          "id": "dapper-22",
+          "query": "How does DbString create a database parameter?",
+          "relevant": [
+            {
+              "file": "Dapper/DbString.cs",
+              "symbol": "DbString.AddParameter"
+            }
+          ]
+        },
+        {
+          "id": "dapper-23",
+          "query": "Find a constructor that matches returned database column names",
+          "relevant": [
+            {
+              "file": "Dapper/DefaultTypeMap.cs",
+              "symbol": "DefaultTypeMap.FindConstructor"
+            }
+          ]
+        },
+        {
+          "id": "dapper-24",
+          "query": "Resolve a database column to a CLR property or field",
+          "relevant": [
+            {
+              "file": "Dapper/DefaultTypeMap.cs",
+              "symbol": "DefaultTypeMap.GetMember"
+            }
+          ]
+        },
+        {
+          "id": "dapper-25",
+          "query": "Restore the default global SQL mapper settings",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Settings.cs",
+              "symbol": "Settings.SetDefaults"
+            }
+          ]
+        },
+        {
+          "id": "dapper-26",
+          "query": "Set up a database command from CommandDefinition",
+          "relevant": [
+            {
+              "file": "Dapper/CommandDefinition.cs",
+              "symbol": "CommandDefinition.SetupCommand"
+            }
+          ]
+        },
+        {
+          "id": "dapper-27",
+          "query": "Call completion callbacks after a SQL command finishes",
+          "relevant": [
+            {
+              "file": "Dapper/CommandDefinition.cs",
+              "symbol": "CommandDefinition.OnCompleted"
+            }
+          ]
+        },
+        {
+          "id": "dapper-28",
+          "query": "Read a typed result set from GridReader",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.GridReader.cs",
+              "symbol": "GridReader.Read"
+            }
+          ]
+        },
+        {
+          "id": "dapper-29",
+          "query": "Read exactly one row from the current result grid",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.GridReader.cs",
+              "symbol": "GridReader.ReadSingle"
+            }
+          ]
+        },
+        {
+          "id": "dapper-30",
+          "query": "Dispose a grid reader and its database command",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.GridReader.cs",
+              "symbol": "GridReader.Dispose"
+            }
+          ]
+        },
+        {
+          "id": "dapper-31",
+          "query": "Look up a named column in a dynamic DapperRow",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.DapperRow.cs",
+              "symbol": "DapperRow.TryGetValue"
+            }
+          ]
+        },
+        {
+          "id": "dapper-32",
+          "query": "Remove a key from a dynamic row result",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.DapperRow.cs",
+              "symbol": "DapperRow.Remove"
+            }
+          ]
+        },
+        {
+          "id": "dapper-33",
+          "query": "Compare the identity of two cached query definitions",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.Identity.cs",
+              "symbol": "Identity.Equals"
+            }
+          ]
+        },
+        {
+          "id": "dapper-34",
+          "query": "設定自訂資料型別處理器，轉換資料庫讀出的值",
+          "relevant": [
+            {
+              "file": "Dapper/SqlMapper.TypeHandler.cs",
+              "symbol": "TypeHandler.Parse"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PetaPoco",
+      "repository": "https://github.com/CollaboratingPlatypus/PetaPoco.git",
+      "commit": "86b10d9ec36e81924cd225b9d0c6193f049e5e0a",
+      "license": "Apache-2.0",
+      "version": 1,
+      "queries": [
+        {
+          "id": "petapoco-01",
+          "query": "Open a shared database connection",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.OpenSharedConnection"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-02",
+          "query": "Close the shared database connection",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.CloseSharedConnection"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-03",
+          "query": "Start a database transaction",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.BeginTransaction"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-04",
+          "query": "Roll back an incomplete database transaction",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.AbortTransaction"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-05",
+          "query": "Commit a completed database transaction",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.CompleteTransaction"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-06",
+          "query": "Execute a database scalar query",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.ExecuteScalar"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-07",
+          "query": "Fetch rows from a SQL query into a list",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.Fetch"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-08",
+          "query": "Retrieve a page of records and pagination metadata",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.Page"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-09",
+          "query": "Insert a plain object into its mapped table",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.Insert"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-10",
+          "query": "Update a plain object in the database",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.Update"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-11",
+          "query": "Delete an object by its primary key",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.Delete"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-12",
+          "query": "Begin asynchronous shared connection opening",
+          "relevant": [
+            {
+              "file": "PetaPoco/Database.cs",
+              "symbol": "Database.OpenSharedConnectionAsync"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-13",
+          "query": "Append a SQL fragment to a query builder",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Sql.cs",
+              "symbol": "Sql.Append"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-14",
+          "query": "Add a WHERE predicate to a SQL builder",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Sql.cs",
+              "symbol": "Sql.Where"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-15",
+          "query": "Add ordering to the SQL query builder",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Sql.cs",
+              "symbol": "Sql.OrderBy"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-16",
+          "query": "Build a left join in a SQL query",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Sql.cs",
+              "symbol": "Sql.LeftJoin"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-17",
+          "query": "Mark a transaction successful before its scope is disposed",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Transaction.cs",
+              "symbol": "Transaction.Complete"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-18",
+          "query": "Roll back an unfinished scoped transaction during disposal",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Transaction.cs",
+              "symbol": "Transaction.Dispose"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-19",
+          "query": "Infer table metadata from a mapped CLR type",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/TableInfo.cs",
+              "symbol": "TableInfo.FromPoco"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-20",
+          "query": "Determine column mapping metadata for a property",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/ColumnInfo.cs",
+              "symbol": "ColumnInfo.FromProperty"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-21",
+          "query": "Resolve the mapper registered for a CLR type",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Mappers.cs",
+              "symbol": "Mappers.GetMapper"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-22",
+          "query": "Clear cached plain object mapping data",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/PocoData.cs",
+              "symbol": "PocoData.FlushCaches"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-23",
+          "query": "Split a SQL SELECT statement into paging components",
+          "relevant": [
+            {
+              "file": "PetaPoco/Utilities/PagingHelper.cs",
+              "symbol": "PagingHelper.SplitSQL"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-24",
+          "query": "Expand enumerable values into SQL query parameters",
+          "relevant": [
+            {
+              "file": "PetaPoco/Utilities/ParametersHelper.cs",
+              "symbol": "ParametersHelper.ProcessQueryParams"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-25",
+          "query": "Process stored procedure argument parameters",
+          "relevant": [
+            {
+              "file": "PetaPoco/Utilities/ParametersHelper.cs",
+              "symbol": "ParametersHelper.ProcessStoredProcParams"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-26",
+          "query": "Select a registered database provider implementation",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/DatabaseProvider.cs",
+              "symbol": "DatabaseProvider.Resolve"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-27",
+          "query": "Generate paging SQL for SQL Server",
+          "relevant": [
+            {
+              "file": "PetaPoco/Providers/SqlServerDatabaseProvider.cs",
+              "symbol": "SqlServerDatabaseProvider.BuildPageQuery"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-28",
+          "query": "Generate a SQL Server insert output clause",
+          "relevant": [
+            {
+              "file": "PetaPoco/Providers/SqlServerDatabaseProvider.cs",
+              "symbol": "SqlServerDatabaseProvider.GetInsertOutputClause"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-29",
+          "query": "Convert an unsigned integer parameter for SQLite",
+          "relevant": [
+            {
+              "file": "PetaPoco/Providers/SQLiteDatabaseProvider.cs",
+              "symbol": "SQLiteDatabaseProvider.MapParameterValue"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-30",
+          "query": "Generate a table name using mapping conventions",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/ConventionMapper.cs",
+              "symbol": "ConventionMapper.GetTableInfo"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-31",
+          "query": "Generate a factory that maps joined rows to multiple objects",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/MultiPocoFactory.cs",
+              "symbol": "MultiPocoFactory.GetFactory"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-32",
+          "query": "Convert an English word to plural form",
+          "relevant": [
+            {
+              "file": "PetaPoco/Core/Inflection/EnglishInflector.cs",
+              "symbol": "EnglishInflector.Pluralise"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-33",
+          "query": "設定資料庫查詢的命令逾時",
+          "relevant": [
+            {
+              "file": "PetaPoco/DatabaseConfigurationExtensions.cs",
+              "symbol": "DatabaseConfigurationExtensions.UsingCommandTimeout"
+            }
+          ]
+        },
+        {
+          "id": "petapoco-34",
+          "query": "Configure a database connection string through the builder",
+          "relevant": [
+            {
+              "file": "PetaPoco/DatabaseConfigurationExtensions.cs",
+              "symbol": "DatabaseConfigurationExtensions.UsingConnectionString"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SimpleCRUD",
+      "repository": "https://github.com/ericdc1/Dapper.SimpleCRUD.git",
+      "commit": "62a543134328d283a467a30295ea9b4258fbc772",
+      "license": "Apache-2.0",
+      "version": 1,
+      "queries": [
+        {
+          "id": "simplecrud-01",
+          "query": "Read the configured SQL dialect",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetDialect"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-02",
+          "query": "Switch SQL syntax to a chosen database dialect",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.SetDialect"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-03",
+          "query": "Install a custom table name resolver",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.SetTableNameResolver"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-04",
+          "query": "Install a custom column name resolver",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.SetColumnNameResolver"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-05",
+          "query": "Fetch a record by primary key",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.Get"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-06",
+          "query": "List records matching object property conditions",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetList"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-07",
+          "query": "Fetch a numbered page of database records",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetListPaged"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-08",
+          "query": "Insert an entity and retrieve its primary key",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.Insert"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-09",
+          "query": "Update mapped writable properties of an entity",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.Update"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-10",
+          "query": "Delete a database entity by identifier",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.Delete"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-11",
+          "query": "Delete multiple records matching conditions",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.DeleteList"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-12",
+          "query": "Count records matching a condition",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.RecordCount"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-13",
+          "query": "Build the SET clause for an entity update",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.BuildUpdateSet"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-14",
+          "query": "Build a SELECT column list",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.BuildSelect"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-15",
+          "query": "Build a WHERE clause from key properties",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.BuildWhere"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-16",
+          "query": "Build column names for an INSERT statement",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.BuildInsertValues"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-17",
+          "query": "Build named placeholders for INSERT parameters",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.BuildInsertParameters"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-18",
+          "query": "Find scaffoldable properties on a CLR entity",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetScaffoldableProperties"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-19",
+          "query": "Determine whether a mapped property is editable",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.IsEditable"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-20",
+          "query": "Find the primary key properties of an entity type",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetIdProperties"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-21",
+          "query": "Resolve a table name for an entity type",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetTableName"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-22",
+          "query": "Resolve a column name from property metadata",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.GetColumnName"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-23",
+          "query": "Quote a database identifier using the configured dialect",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.Encapsulate"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-24",
+          "query": "Generate a sequential GUID for a database primary key",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUD.cs",
+              "symbol": "SimpleCRUD.SequentialGuid"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-25",
+          "query": "Fetch one database row asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.GetAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-26",
+          "query": "List matching database rows asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.GetListAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-27",
+          "query": "Fetch a page of records asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.GetListPagedAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-28",
+          "query": "Insert a record asynchronously and return its identifier",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.InsertAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-29",
+          "query": "Update an entity asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.UpdateAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-30",
+          "query": "Delete a record asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.DeleteAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-31",
+          "query": "Delete matching database records asynchronously",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.DeleteListAsync"
+            }
+          ]
+        },
+        {
+          "id": "simplecrud-32",
+          "query": "非同步查詢符合條件的資料筆數",
+          "relevant": [
+            {
+              "file": "Dapper.SimpleCRUD/SimpleCRUDAsync.cs",
+              "symbol": "SimpleCRUD.RecordCountAsync"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

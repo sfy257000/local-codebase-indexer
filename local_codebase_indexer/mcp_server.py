@@ -7,6 +7,8 @@ import sqlite3
 import sys
 
 from . import __version__
+from .contracts import compact, output_schema, result
+from .locking import IndexBusyError
 from .query import (
     CodebaseTools,
     render_context,
@@ -18,7 +20,8 @@ from .query import (
     render_status,
 )
 
-PROTOCOL_VERSION = "2024-11-05"
+SUPPORTED_PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+PROTOCOL_VERSION = SUPPORTED_PROTOCOLS[0]
 
 TOOLS: list[dict] = [
     {
@@ -27,6 +30,7 @@ TOOLS: list[dict] = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "mode": {"type": "string", "enum": ["hybrid", "lexical"], "default": "hybrid"},
                 "query": {"type": "string", "description": "Semantic explanation of what you are looking for."},
                 "limit": {"type": "integer", "description": "Maximum chunks to return (default 5).", "default": 5, "minimum": 1, "maximum": 50},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
@@ -71,6 +75,8 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {
                 "object_name": {"type": "string", "description": 'Table, view or procedure name, optionally schema qualified, e.g. "MES_Lot" or "dbo.usp_Lot_UpdateStatus".'},
+                "sql_depth": {"type": "integer", "minimum": 1, "maximum": 32, "default": 4},
+                "call_depth": {"type": "integer", "minimum": 1, "maximum": 64, "default": 8},
                 "detail": {"type": "boolean", "description": "List every entry instead of the 5-entry summary.", "default": False},
                 "limit": {"type": "integer", "minimum": 1, "description": "Page size per section."},
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
@@ -100,24 +106,67 @@ TOOLS: list[dict] = [
 ]
 
 
-def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
+for _tool in TOOLS:
+    if _tool['name'] != 'codebase_get_optimized_context':
+        _tool['inputSchema']['properties'].setdefault('detail', {'type':'boolean','default':False,
+            'description':'Return full structured nested collections; result limits and lookup bounds still apply.'})
+    _tool['outputSchema'] = output_schema(_tool['name'])
+    _tool['annotations'] = {'readOnlyHint': _tool['name'] in (
+        'codebase_index_status', 'codebase_index_doctor', 'codebase_get_optimized_context'),
+        'destructiveHint': False, 'idempotentHint': True, 'openWorldHint': False}
+
+
+def invoke_tool(tools: CodebaseTools, name: str, args: dict) -> tuple[dict, str]:
     if name == "codebase_semantic_search":
-        return render_search(tools.semantic_search(args["query"], args.get("limit", 5), args.get("related", False),
-                                                   args.get("file_pattern"), args.get("language"), args.get("offset", 0),
-                                                   cursor=args.get("cursor"), explain=args.get("explain", False)))
-    if name == "codebase_get_symbol_relations":
-        return render_relations(tools.symbol_relations(args["symbol_name"], args.get("relation_direction", "both")))
-    if name == "codebase_get_optimized_context":
-        return render_context(tools.optimized_context(args["file_path"], args["focus_lines"], args.get("padding_lines", 15)))
-    if name == "codebase_get_data_access":
-        return render_data_access(tools.data_access(args["object_name"], args.get("limit"), args.get("offset", 0), args.get("confidence")), bool(args.get("detail")))
-    if name == "codebase_impact_analysis":
-        return render_impact(tools.impact(args.get("base")), bool(args.get("detail")))
-    if name == "codebase_index_status":
-        return render_status(tools.index_status())
-    if name == "codebase_index_doctor":
-        return render_doctor(tools.doctor(args.get("path")))
-    raise KeyError(f"unknown tool: {name}")
+        data = tools.semantic_search(args['query'], args.get('limit', 5), args.get('related', False),
+            args.get('file_pattern'), args.get('language'), args.get('offset', 0),
+            cursor=args.get('cursor'), explain=args.get('explain', False), mode=args.get('mode', 'hybrid'))
+        text = render_search(data)
+    elif name == "codebase_get_symbol_relations":
+        data = tools.symbol_relations(args['symbol_name'], args.get('relation_direction', 'both'))
+        text = render_relations(data)
+    elif name == "codebase_get_optimized_context":
+        data = tools.optimized_context(args['file_path'], args['focus_lines'], args.get('padding_lines', 15))
+        text = render_context(data)
+    elif name == "codebase_get_data_access":
+        page_limit = args.get('limit', None if args.get('detail') else 5)
+        data = tools.data_access(args['object_name'], page_limit, args.get('offset', 0), args.get('confidence'),
+                                 args.get('sql_depth', 4), args.get('call_depth', 8))
+        text = render_data_access(data, bool(args.get('detail')))
+    elif name == "codebase_impact_analysis":
+        data = tools.impact(args.get('base'))
+        text = render_impact(data, bool(args.get('detail')))
+    elif name == "codebase_index_status":
+        data = tools.index_status()
+        text = render_status(data)
+    elif name == "codebase_index_doctor":
+        data = tools.doctor(args.get('path'))
+        text = render_doctor(data)
+    else:
+        raise KeyError(f'unknown tool: {name}')
+    if not args.get('detail'):
+        caps = {'paths': 5, 'actions': 6, 'pages': 5, 'callers': 30, 'calls': 40,
+                'referenced_by': 25, 'instantiated_by': 15, 'uses_types': 30,
+                'data_access': 40, 'implementations': 30, 'inheritors_or_implementers': 40,
+                'changed': 15, 'tables': 40, 'programs': 15, 'no_known_caller': 20,
+                'unmapped_files': 20, 'removed_files': 20, 'failed_files': 20,
+                'problems': 20, 'excluded': 20, 'examples': 20, 'candidates': 20,
+                'related_files': 30, 'matched_expansions': 30}
+        omitted = compact(data, caps)
+        if omitted:
+            renderers = {'codebase_semantic_search': render_search, 'codebase_get_symbol_relations': render_relations,
+                         'codebase_get_data_access': render_data_access, 'codebase_impact_analysis': render_impact,
+                         'codebase_index_status': render_status, 'codebase_index_doctor': render_doctor}
+            if name in renderers:
+                text = renderers[name](data)
+            text += '\nDelivered collections are bounded; use detail=true for full structured nested evidence.\n' + '\n'.join(
+                f"  {item['path']}: {item['returned']}/{item['total']}" for item in omitted)
+    return result(name, data), text
+
+
+def call_tool(tools: CodebaseTools, name: str, args: dict) -> str:
+    """Retain the legacy Python helper while MCP also exposes structured content."""
+    return invoke_tool(tools, name, args)[1]
 
 
 def _validate(value, schema: dict, path: str = 'arguments') -> None:
@@ -163,7 +212,11 @@ def handle(tools: CodebaseTools, msg) -> dict | None:
         return err(-32602, 'params must be an object')
     method = msg['method']
     if method == 'initialize':
-        return ok({'protocolVersion': PROTOCOL_VERSION, 'capabilities': {'tools': {}},
+        requested = params.get('protocolVersion', PROTOCOL_VERSION)
+        if not isinstance(requested, str):
+            return err(-32602, 'protocolVersion must be a string')
+        negotiated = requested if requested in SUPPORTED_PROTOCOLS else PROTOCOL_VERSION
+        return ok({'protocolVersion': negotiated, 'capabilities': {'tools': {}},
                    'serverInfo': {'name': 'local-codebase-indexer', 'version': __version__}})
     if method == 'ping':
         return ok({})
@@ -178,8 +231,12 @@ def handle(tools: CodebaseTools, msg) -> dict | None:
     try:
         args = params.get('arguments', {})
         _validate(args, spec['inputSchema'])
-        text = call_tool(tools, name, args)
-        return ok({'content': [{'type': 'text', 'text': text}], 'isError': False})
+        data, text = invoke_tool(tools, name, args)
+        return ok({'content': [{'type': 'text', 'text': text}], 'structuredContent': data, 'isError': False})
+    except IndexBusyError as exc:
+        return ok({'content': [{'type': 'text', 'text': f'Index busy: {exc}. Retry after the current update.'}],
+                   'isError': True, 'structuredContent': {'schema_version': 1,
+                   'error': {'code': 'index_busy', 'retryable': True, 'message': str(exc)}}})
     except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
         return ok({'content': [{'type': 'text', 'text': f'error: {exc}'}], 'isError': True})
     except Exception as exc:

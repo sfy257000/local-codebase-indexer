@@ -30,11 +30,21 @@ class RelationTools:
                 "SELECT * FROM symbols WHERE symbol_name=? AND symbol_type != 'namespace' ORDER BY file_path, start_line LIMIT 8",
                 (symbol_name,),
             ).fetchall()
+        sql_candidates: list[str] = []
+        try:
+            _selected, candidates, sql_defs, _bindings = dataflow._Catalog(conn).select(dataflow.sqlidentity.parts(symbol_name))
+            if sql_defs:
+                defs = [d for d in defs if not d['sql_identity']] + sql_defs
+            elif len(candidates) > 1:
+                defs = [d for d in defs if not d['sql_identity']]
+                sql_candidates = [dataflow.sqlidentity.display(c) for c in candidates]
+        except ValueError:
+            pass  # Long application-qualified names need not be four-part SQL names.
         if not defs:
             like = conn.execute(
                 "SELECT DISTINCT symbol_name FROM symbols WHERE symbol_name LIKE ? LIMIT 10", (f"%{symbol_name}%",)
             ).fetchall()
-            return {"symbol": symbol_name, "definitions": [], "suggestions": [r[0] for r in like]}
+            return {"symbol": symbol_name, "definitions": [], "suggestions": sql_candidates or [r[0] for r in like], "sql_ambiguous": bool(sql_candidates)}
 
         type_defs: dict[str, list[sqlite3.Row]] = defaultdict(list)
         for r in conn.execute(
@@ -55,7 +65,7 @@ class RelationTools:
                 entry["downstream"] = self._downstream(d, type_defs)
             out_defs.append(entry)
         return {
-            "symbol": symbol_name, "definitions": out_defs,
+            "symbol": symbol_name, "definitions": out_defs, "sql_candidates": sql_candidates,
             "note": ("C# method calls are resolved by receiver type (confirmed / probable / candidate); type references and "
                  "fields remain identifier-name matches; inheritance edges come from the AST"),
         }
@@ -112,7 +122,8 @@ class RelationTools:
             return {"callers": callers, "callers_total": total, "implementations": impls,
                     "inheritors_or_implementers": [], "referenced_by": [], "referenced_by_total": 0}
         if kind in self._SQL_KINDS:
-            res = dataflow.data_access(self.conn, d["symbol_name"])
+            identity = dataflow._Catalog.definition_name(d)
+            res = dataflow.data_access(self.conn, dataflow.sqlidentity.display(identity))
             callers = []
             for label, key in (("writes", "writers"), ("reads", "readers"), ("executes", "executed_by"), ("maps", "mapped_by")):
                 for e in res.get(key, []):
@@ -141,7 +152,8 @@ class RelationTools:
             down["data_access"] = self._own_data_access(d["id"])
             return down
         if kind in ("procedure", "view", "function"):
-            res = dataflow.data_access(conn, d["symbol_name"])
+            identity = dataflow._Catalog.definition_name(d)
+            res = dataflow.data_access(conn, dataflow.sqlidentity.display(identity))
             t = res.get("touches", {})
             down = {"base_types": [], "uses_types": [], "calls": [], "data_access": []}
             for key in ("writes", "reads", "executes", "dynamic_sql"):

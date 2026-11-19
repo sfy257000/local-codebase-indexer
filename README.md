@@ -12,6 +12,8 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 
 ## How it compares with Claude's Grep and similar tools
 
+Recorded comparison for 0.9.1; new candidate measurements are linked in the Unreleased section below.
+
 **Measured on our MES fixtures: +9.5–10.7 percentage points in relevant-file recall versus `rg + BM25`.** For the bundled SQL → C# → page investigation, the relation report covers **5/5 required evidence files**, versus **3/5** from one literal table-name search (**+40 points**).
 
 | Fixed retrieval suite | `rg + BM25` file Recall@5 | This project | Difference |
@@ -91,6 +93,34 @@ claude mcp add local-indexer -- local-codebase-indexer --root "/absolute/path/to
 Ask: “Which code writes `YourTable`, and which controller actions and pages reach it? Show paths and confidence levels.” Restart/reconnect the MCP client if needed. For other stdio MCP clients, use command `local-codebase-indexer` and arguments `--root`, your absolute project path, `serve`.
 
 Codex / Copilot can use the CLI. [AGENTS.md](https://github.com/sfy257000/local-codebase-indexer/blob/main/AGENTS.md) contains assistant instructions. The [reference](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/reference.md) also covers the Claude Code plugin, seven MCP tools, ONNX models, aliases, and configuration.
+
+## Project setup and shareable reports (Unreleased)
+
+Install this checkout with `python -m pip install -e .` to use these additions:
+
+```bash
+local-codebase-indexer --root "/path/to/project" init --client claude
+local-codebase-indexer --root "/path/to/project" init --client codex --no-index
+local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output .ai_context/reports/table.html
+local-codebase-indexer --root "/path/to/project" search "project terminology" --mode lexical
+```
+
+Qualified SQL objects now retain separate database/schema identities. Ambiguous short names list candidates; bounded evidence paths explain SQL/C# call depth cutoffs. MCP also returns versioned structured JSON. HTML reports work offline and include an SVG graph, source locations, confidence, and full evidence.
+
+[Sample HTML report](assets/impact-report.html) · [implementation, API contracts, client checks, and measured limitations](docs/v1-readiness.md). The new 100-question evaluation uses three real public C# repositories: overall symbol-aware Recall@5 remains **48.0%** versus 0.9.1, with MRR **0.3345 → 0.3283**. Optional lexical mode reaches **54.0% (+6 percentage points)** and MRR **0.3988** across the same 100 questions. This exposes limits of general natural-language retrieval; it is not independent production-accuracy evidence.
+
+The maintainer-supplied [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) adds 12 separate source-reviewed Python questions: **7/12 → 8/12 correct symbols in the top five (+8.3 percentage points)**. Indexing, stale detection, one-file updates and changed-symbol impact passed in a disposable copy. [Raw results and limits](docs/v1-readiness.md#maintainer-supplied-project-acceptance); this does not validate production SQL impact.
+
+On the generated 100k-chunk scaling workload, in-process vector caching changes warm p95 from **3.21 s to 1.74 s (45.8% lower)** across five samples; the cached query worker peaks at **401.7 MiB**. These are machine-specific measurements, not CLI-startup or production-workload guarantees. [Raw scaling data](benchmarks/performance-results.json).
+
+The candidate file-level `rg + BM25` comparison measures **+13.1 pp** on synthetic MES, **+9.5 pp** with noise, and **−20.8 pp** on Python stdlib; [current results and protocol](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline) keep the losses visible.
+
+<details>
+<summary>Preview the impact report</summary>
+
+![Preview the impact report](assets/impact-report.png)
+
+</details>
 
 ## More maintenance questions
 

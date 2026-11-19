@@ -12,6 +12,8 @@
 
 ## 與 Claude 的 Grep 及類似工具比較
 
+以下為 0.9.1 的歷史量測；候選版本的新數據另見下方「尚未發布」段落。
+
 **在本專案的 MES 測試集，相關檔案召回率比 `rg + BM25` 高 9.5～10.7 個百分點。** 內建 SQL → C# → 頁面調查情境中，關係報告涵蓋 **5/5 個必要證據檔案**，單次表名字面搜尋為 **3/5**，涵蓋率 **60% → 100%（+40 個百分點）**。
 
 | 固定搜尋測試集 | `rg + BM25` 檔案 Recall@5 | 本專案 | 差異 |
@@ -91,6 +93,34 @@ claude mcp add local-indexer -- local-codebase-indexer --root "/absolute/path/to
 可以問：「哪些程式寫入 `YourTable`？哪些 Controller Action 與頁面會到達它？請列出路徑與信心等級。」必要時重新連線或重啟 MCP 用戶端。
 
 其他 stdio MCP 用戶端使用命令 `local-codebase-indexer`，參數依序為 `--root`、專案絕對路徑、`serve`。Codex／Copilot 可使用 CLI；[AGENTS.md](AGENTS.md) 有助手指引。[進階手冊](docs/reference.zh-TW.md) 包含 Claude Code plugin、七個 MCP 工具、ONNX 模型與設定。
+
+## 專案初始化與可分享報告（尚未發布）
+
+先在此分支執行 `python -m pip install -e .`，即可使用新增功能：
+
+```bash
+local-codebase-indexer --root "/path/to/project" init --client claude
+local-codebase-indexer --root "/path/to/project" init --client codex --no-index
+local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output .ai_context/reports/table.html
+local-codebase-indexer --root "/path/to/project" search "專案識別字" --mode lexical
+```
+
+SQL 物件保留資料庫／schema 的完整身分；短名稱有歧義時列出候選。證據鏈會說明 SQL／C# 深度截斷，MCP 也提供帶版本的結構化 JSON。HTML 報告可離線開啟，包含 SVG 關係圖、原始碼位置、信心標籤與完整證據。
+
+[HTML 報告範例](assets/impact-report.html) · [實作、API 契約、客戶端驗證與量測限制（英文）](docs/v1-readiness.md)。新增三個真實公開 C# 專案、100 題評測，含符號比對的整體 Recall@5 與 0.9.1 同為 **48.0%**，MRR 為 **0.3345 → 0.3283**。相同 100 題固定使用選配的 lexical 模式可達 **54.0%（+6 個百分點）**、MRR **0.3988**。這揭露一般自然語言搜尋的限制，並非獨立的正式環境準確率證明。
+
+另用你提供的 [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) 建立 12 題獨立列計的 Python 查詢：前五筆找到正確符號由 **7/12 → 8/12（+8.3 個百分點）**。暫存副本的索引、過期偵測、單檔更新與變更符號影響分析通過。[原始結果與限制](docs/v1-readiness.md#maintainer-supplied-project-acceptance)；這尚不能驗證正式 SQL 專案的影響分析。
+
+在產生的 10 萬個程式區塊測試中，程序內向量快取讓 5 次暖查詢樣本的 p95 由 **3.21 秒降至 1.74 秒（降低 45.8%）**，查詢程序峰值記憶體 **401.7 MiB**。這是單機特定測試結果，不能當成 CLI 啟動或正式專案的效能保證。[原始效能資料](benchmarks/performance-results.json)。
+
+此分支對 `rg + BM25` 的檔案召回率比較為：合成 MES **+13.1 個百分點**、加入雜訊 **+9.5 個百分點**，Python 標準函式庫 **−20.8 個百分點**。[本次結果與方法](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline)同時保留較差的情況。
+
+<details>
+<summary>預覽影響分析報告</summary>
+
+![預覽影響分析報告](assets/impact-report.png)
+
+</details>
 
 ## 其他維護問題
 

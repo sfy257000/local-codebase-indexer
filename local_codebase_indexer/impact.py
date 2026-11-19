@@ -59,7 +59,8 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
     for sid, c in changed.items():
         own.extend({'source': c['symbol'], 'target': r['target_name'], 'access': r['access'],
                     'op': r['op'], 'confidence': r['confidence'], 'file_path': r['file_path'],
-                    'line': r['line'], 'snapshot': snapshot, 'evidence': r['evidence']}
+                    'line': r['line'], 'snapshot': snapshot, 'evidence': r['evidence'],
+                    'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(r))}
                    for r in tools.conn.execute("SELECT * FROM data_access WHERE source_id=? AND via != 'ef_raw'", (sid,)))
     # Scripts often have no containing symbol (ALTER/DROP TABLE, seed SQL).
     # Include their accesses by changed lines rather than losing them entirely.
@@ -68,14 +69,16 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
             if any(start <= row['line'] <= end for start, end in spans):
                 own.append({'source': path, 'target': row['target_name'], 'access': row['access'],
                             'op': row['op'], 'confidence': row['confidence'], 'file_path': path,
-                            'line': row['line'], 'snapshot': snapshot, 'evidence': row['evidence']})
+                            'line': row['line'], 'snapshot': snapshot, 'evidence': row['evidence'],
+                    'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(row))})
     entries = [{'source_id': c['id'], 'source_type': c['type'], 'access': 'change', 'confidence': 'confirmed'}
                for c in changed.values()]
-    programs, roots = dataflow._programs(tools.conn, dataflow._Lookup(tools.conn), entries)
+    lookup = dataflow._Lookup(tools.conn)
+    programs, roots = dataflow._programs(tools.conn, lookup, entries)
     for entry in programs + roots:
         entry['snapshot'] = snapshot
     return {'changed': list(changed.values()), 'unmapped_files': unmapped, 'tables': own,
-            'programs': programs, 'no_known_caller': roots}
+            'programs': programs, 'no_known_caller': roots, 'coverage_warnings': lookup.warnings}
 
 
 def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "before") -> dict:
@@ -210,6 +213,8 @@ def analyze_impact(tools, base: str | None) -> dict:
                     result[field].append(row)
                     seen.add(key)
         result['unmapped_files'] = sorted(set(result['unmapped_files']) | set(old['unmapped_files']))
+    if before:
+        result['coverage_warnings'] += old.get('coverage_warnings', [])
     result.update(base=base or 'HEAD (uncommitted)', removed_files=sorted(set(deleted)),
                   revisions={'before': old_revision, 'after': target},
                   note=('After lines refer to the target commit; before lines refer to the base revision. ' if target else

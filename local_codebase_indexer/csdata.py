@@ -16,7 +16,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .sqlaccess import HOLE, Access, extract_sql_accesses
+from . import sqlidentity
+from .sqlaccess import _NAME, HOLE, Access, extract_sql_accesses
 
 _STRINGISH = {"string_literal", "verbatim_string_literal", "raw_string_literal", "interpolated_string_expression"}
 _SCOPES = {
@@ -33,7 +34,7 @@ _EF_READ = {"Where", "First", "FirstOrDefault", "FirstOrDefaultAsync", "Single",
             "All", "Count", "CountAsync", "LongCount", "Find", "FindAsync", "ToList", "ToListAsync", "ToArray", "Select",
             "OrderBy", "OrderByDescending", "AsNoTracking", "AsQueryable", "Include", "Max", "Min", "Sum", "Average",
             "GroupBy", "Join", "Distinct", "Take", "Skip"}
-_PROC_NAME = re.compile(r"^[A-Za-z_][\w$]*(?:\.[\w$]+){0,2}$")
+_PROC_NAME = re.compile(rf"^{_NAME}$")
 _NOT_PROC = {"select", "update", "delete", "insert", "exec", "execute", "merge", "truncate"}
 _STATEMENT_SHAPES = [
     re.compile(r"^\s*select\b[\s\S]+\bfrom\b\s+\S", re.I),
@@ -55,6 +56,7 @@ class _Cand:
     sink: bool = False
     proc_ok: bool = False  # may be read as a stored procedure name
     builder: bool = False  # a StringBuilder local
+    byte_offset: int = -1
 
 
 def looks_like_statement(text: str) -> bool:
@@ -74,7 +76,7 @@ class _Extractor:
     def __init__(self, src: bytes, symbols: list):
         self.src = src
         self.out: list[Access] = []
-        spans = [(s.end - s.start, s) for s in symbols if s.type != "namespace"]
+        spans = [(s.end_byte - s.start_byte if s.start_byte >= 0 else s.end - s.start, s) for s in symbols if s.type != "namespace"]
         spans.sort(key=lambda t: (t[0], t[1].start))
         self.spans = [s for _, s in spans]
         self.file_env: dict[str, _Cand] = {}
@@ -99,7 +101,7 @@ class _Extractor:
             for parameter in parameters.named_children:
                 name = parameter.child_by_field_name('name')
                 if name is not None:
-                    env[self.text(name)] = _Cand(HOLE, False, self.line(name))
+                    env[self.text(name)] = _Cand(HOLE, False, self.line(name), byte_offset=name.start_byte)
         return env
 
     @staticmethod
@@ -114,9 +116,10 @@ class _Extractor:
     def text(self, n) -> str:
         return self.src[n.start_byte:n.end_byte].decode("utf-8", errors="replace")
 
-    def locate(self, line: int):
+    def locate(self, line: int, byte: int = -1):
         for s in self.spans:
-            if s.start <= line <= s.end:
+            contains = (s.start_byte <= byte < s.end_byte) if byte >= 0 and s.start_byte >= 0 else (s.start <= line <= s.end)
+            if contains:
                 return s
         return None
 
@@ -232,7 +235,7 @@ class _Extractor:
         return tnode is not None and self.text(tnode).split(".")[-1] == "StringBuilder"
 
     def _new_builder(self, creation, env) -> _Cand:
-        c = _Cand("", True, self.line(creation), builder=True)
+        c = _Cand("", True, self.line(creation), byte_offset=creation.start_byte, builder=True)
         args = self.arg_exprs(creation.child_by_field_name("arguments"))
         if args and args[0][0] is not None and self._is_stringy(args[0][0]):
             r = self.evaluate(args[0][0], env)
@@ -268,7 +271,7 @@ class _Extractor:
             return False
         for call, name in reversed(calls):
             if name == "Clear":
-                c = _Cand("", True, self.line(call), builder=True)
+                c = _Cand("", True, self.line(call), byte_offset=call.start_byte, builder=True)
                 env[var] = c
                 self.cands.append(c)
                 continue
@@ -334,7 +337,7 @@ class _Extractor:
                         local = self.class_env.setdefault(owner, {})
                         r = self.evaluate(init, local)
                         if r:
-                            c = _Cand(r[0], r[1], self.line(init))
+                            c = _Cand(r[0], r[1], self.line(init), byte_offset=init.start_byte)
                             local[ident] = c
                             self.file_env[owner + '.' + ident] = c
                             self.cands.append(c)
@@ -368,12 +371,12 @@ class _Extractor:
             if ident and init is not None:
                 r = self.evaluate(init, env)
                 if r:
-                    c = _Cand(r[0], r[1], self.line(init))
+                    c = _Cand(r[0], r[1], self.line(init), byte_offset=init.start_byte)
                     env[ident] = c
                     self.cands.append(c)
                     return True
             if ident:
-                env[ident] = _Cand(HOLE, False, self.line(n))
+                env[ident] = _Cand(HOLE, False, self.line(n), byte_offset=n.start_byte)
             return False
         if t == "assignment_expression":
             return self._assignment(n, env, stack)
@@ -392,7 +395,7 @@ class _Extractor:
         if self._is_stringy(n):
             r = self.evaluate(n, env)
             if r:
-                self.cands.append(_Cand(r[0], r[1], self.line(n)))
+                self.cands.append(_Cand(r[0], r[1], self.line(n), byte_offset=n.start_byte))
             return True
         return False
 
@@ -415,11 +418,11 @@ class _Extractor:
             name = self.text(left)
             r = self.evaluate(right, env)
             if r is None:
-                self._bind(env, name, _Cand(HOLE, False, self.line(right)))
+                self._bind(env, name, _Cand(HOLE, False, self.line(right), byte_offset=right.start_byte))
                 return False
             cur = env.get(name)
             if cur is not None and (cur.sink or any(cur is value for value in self.file_env.values())):
-                cur = _Cand(cur.text, cur.complete, self.line(right))
+                cur = _Cand(cur.text, cur.complete, self.line(right), byte_offset=right.start_byte)
                 self._bind(env, name, cur)
                 self.cands.append(cur)
             if op == "+=" and cur is not None:
@@ -428,7 +431,7 @@ class _Extractor:
             elif cur is not None and re.search(rf"\b{re.escape(name)}\b", self.text(right)):
                 cur.text, cur.complete = r  # sql = sql + "..."
             else:
-                c = _Cand(r[0], r[1], self.line(right))
+                c = _Cand(r[0], r[1], self.line(right), byte_offset=right.start_byte)
                 self._bind(env, name, c)
                 self.cands.append(c)
             return True
@@ -444,7 +447,7 @@ class _Extractor:
                 if c.text == HOLE:
                     return False
                 if any(c is value for value in self.file_env.values()):
-                    self.cands.append(_Cand(c.text, c.complete, self.line(expr), sink=True, proc_ok=first))
+                    self.cands.append(_Cand(c.text, c.complete, self.line(expr), byte_offset=expr.start_byte, sink=True, proc_ok=first))
                     return True
                 c.sink = True
                 c.proc_ok = c.proc_ok or first
@@ -454,7 +457,7 @@ class _Extractor:
             if r is not None:
                 if r[0] == HOLE:
                     return False
-                self.cands.append(_Cand(r[0], r[1], self.line(expr), sink=True, proc_ok=first))
+                self.cands.append(_Cand(r[0], r[1], self.line(expr), byte_offset=expr.start_byte, sink=True, proc_ok=first))
                 return True
         stack.append(("node", expr))
         return False
@@ -471,13 +474,18 @@ class _Extractor:
         if name in ("SaveChanges", "SaveChangesAsync"):
             self.out.append(Access(
                 key="ef:#savechanges", name=name, qualifier="", kind="entity_set", access="write", op="update",
-                line=self.line(n), via="ef_raw", confidence="uncertain", evidence=self.collapsed(n), detail=name,
+                line=self.line(n), site_offset=n.start_byte, via="ef_raw", confidence="uncertain", evidence=self.collapsed(n), detail=name,
             ))
         args = self.arg_exprs(n.child_by_field_name("arguments"))
         if name in ("ToTable", "ToView") and args and args[0][0] is not None and self._is_stringy(args[0][0]):
             r = self.evaluate(args[0][0], env)
             if r and r[1]:
-                self._mapping(r[0], n, func)
+                table = sqlidentity.display((r[0],))
+                if len(args) > 1 and args[1][0] is not None:
+                    schema = self.evaluate(args[1][0], env)
+                    if schema and schema[1] and schema[0]:
+                        table = sqlidentity.display((schema[0], r[0]))
+                self._mapping(table, n, func)
         if name and _SINK_METHOD.match(name):
             handled_any = False
             for i, (expr, _named) in enumerate(args):
@@ -529,22 +537,23 @@ class _Extractor:
         last = ctx.child_by_field_name("name") if ctx.type == "member_access_expression" else ctx
         self.out.append(Access(
             key="ef:" + self.text(name).lower(), name=self.text(name), qualifier=self.text(last), kind="entity_set",
-            access="write" if write else "read", op=write or "select", line=self.line(n), via="ef_raw",
+            access="write" if write else "read", op=write or "select", line=self.line(n), site_offset=n.start_byte, via="ef_raw",
             confidence="probable", evidence=self.collapsed(n), detail=method,
         ))
 
     def _dynamic_site(self, n) -> None:
         self.out.append(Access(
             key="?", name="(dynamic)", qualifier="", kind="unknown", access="exec", op="dynamic",
-            line=self.line(n), via="csharp_sql", confidence="uncertain", evidence=self.collapsed(n),
+            line=self.line(n), site_offset=n.start_byte, via="csharp_sql", confidence="uncertain", evidence=self.collapsed(n),
         ))
 
     # ---------------------------------------------------------------- mappings
-    def _map_access(self, table: str, line: int, evidence: str, entity: str) -> None:
-        parts = [p.strip("[] ") for p in table.split(".")]
+    def _map_access(self, table: str, line: int, evidence: str, entity: str, byte: int) -> None:
+        parts = sqlidentity.parts(table, folded=False)
         self.out.append(Access(
             key=parts[-1].lower(), name=parts[-1], qualifier=".".join(parts[:-1]), kind="table", access="map",
             op="map", line=line, via="ef_mapping", confidence="confirmed", evidence=evidence, detail=entity,
+            identity=sqlidentity.encode(parts), site_offset=byte,
         ))
 
     def _mapping(self, table: str, n, func) -> None:
@@ -561,7 +570,7 @@ class _Extractor:
                     entity = self.text(targs[0].named_children[0])
                 break
             node = f.child_by_field_name("expression")
-        self._map_access(table, self.line(n), self.collapsed(n), entity)
+        self._map_access(table, self.line(n), self.collapsed(n), entity, n.start_byte)
 
     def _attribute(self, n) -> None:
         name = next((self.text(c) for c in n.named_children if c.type in ("identifier", "qualified_name")), "")
@@ -580,7 +589,14 @@ class _Extractor:
         entity = ""
         if cls is not None:
             entity = next((self.text(c) for c in cls.named_children if c.type == "identifier"), "")
-        self._map_access(r[0], self.line(n), self.collapsed(n), entity)
+        table = sqlidentity.display((r[0],))
+        for argument in arglist.named_children[1:]:
+            if re.match(r'\s*Schema\s*=', self.text(argument)):
+                values = [c for c in argument.named_children if c.type in _STRINGISH]
+                schema = self.evaluate(values[-1], {}) if values else None
+                if schema and schema[1] and schema[0]:
+                    table = sqlidentity.display((schema[0], r[0]))
+        self._map_access(table, self.line(n), self.collapsed(n), entity, n.start_byte)
 
     # ---------------------------------------------------------------- emission
     def _flush(self, mark: int, scope_node) -> None:
@@ -594,17 +610,19 @@ class _Extractor:
             collapsed = " ".join(text.split())[:160]
             if (c.sink and c.proc_ok and c.complete and "\n" not in text and _PROC_NAME.match(text)
                     and text.lower() not in _NOT_PROC):
-                parts = text.split(".")
+                parts = sqlidentity.parts(text, folded=False)
                 self.out.append(Access(
                     key=parts[-1].lower(), name=parts[-1], qualifier=".".join(parts[:-1]), kind="procedure",
                     access="exec", op="exec", line=c.line, via="csharp_sp",
                     confidence="confirmed" if has_sp else "probable", evidence=collapsed,
+                    identity=sqlidentity.encode(parts), site_offset=c.byte_offset,
                 ))
                 continue
             if not (c.sink or looks_like_statement(text)):
                 continue
             for a in extract_sql_accesses(text, c.line):
                 a.line = c.line
+                a.site_offset = c.byte_offset
                 a.via = "csharp_sql"
                 a.evidence = collapsed
                 if a.confidence != "uncertain":
@@ -620,9 +638,9 @@ def extract_cs_accesses(root, src: bytes, symbols: list) -> list[Access]:
         return []
     seen, out = set(), []
     for a in accesses:
-        sym = ex.locate(a.line)
+        sym = ex.locate(a.line, a.site_offset)
         a.source_id = sym.id if sym is not None else None
-        sig = (a.source_id, a.key, a.access, a.op, a.line, a.via)
+        sig = (a.source_id, a.key, a.identity, a.qualifier, a.access, a.op, a.line, a.via)
         if sig not in seen:
             seen.add(sig)
             out.append(a)

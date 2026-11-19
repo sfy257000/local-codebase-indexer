@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "result_type": {
+      "type": "string",
+      "const": "codebase_index_status"
+    },
+    "root": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "truncation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "total",
+          "returned"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "result_type",
+    "root",
+    "state"
+  ],
+  "additionalProperties": true
+}

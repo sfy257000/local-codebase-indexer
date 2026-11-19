@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,8 +25,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py
+      - run: python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py benchmarks/real_projects.py benchmarks/performance.py tests/test_v1_*.py
       - run: python -m mypy
+      - run: python scripts/export_contracts.py --check
   package:
     runs-on: ubuntu-latest
     steps:
@@ -38,7 +39,7 @@ jobs:
       - name: Test installed wheel and source distribution
         run: |
           python -m venv "$RUNNER_TEMP/package-env"
-          "$RUNNER_TEMP/package-env/bin/pip" install "$GITHUB_WORKSPACE"/dist/*.whl pytest onnx onnxruntime tokenizers
+          "$RUNNER_TEMP/package-env/bin/pip" install "$GITHUB_WORKSPACE"/dist/*.whl pytest onnx onnxruntime tokenizers jsonschema "mcp>=1.12,<2"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer --version
           "$RUNNER_TEMP/package-env/bin/python" -I -m local_codebase_indexer demo --json
@@ -74,5 +75,51 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tool-comparison
+          path: comparison/
+          if-no-files-found: error
+
+  v1-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Compare frozen real-project questions with 0.9.1
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/indexer-baseline" 1535f8937821164d2e8d164ee6e0159a4240d873
+          python benchmarks/real_projects.py --baseline-source "$RUNNER_TEMP/indexer-baseline" --save comparison/real-projects.json
+          python benchmarks/real_projects.py --manifest benchmarks/maintainer-project.json --baseline-source "$RUNNER_TEMP/indexer-baseline" --lexical --save comparison/maintainer-project.json
+      - name: Smoke-test scaling and incremental updates
+        run: python benchmarks/performance.py --sizes 1000 --repeats 3 --save comparison/performance-smoke.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v1-readiness
+          path: comparison/
+          if-no-files-found: error
+
+  client-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: pip install -e .
+      - name: Install pinned Claude client
+        run: npm install --prefix "$RUNNER_TEMP/clients" @anthropic-ai/claude-code@2.1.328
+      - name: Call MCP through Claude with a local mock model
+        run: python scripts/check_mcp_clients.py --claude "$RUNNER_TEMP/clients/node_modules/.bin/claude" --save comparison/clients.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-client-integration
           path: comparison/
           if-no-files-found: error

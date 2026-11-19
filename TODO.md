@@ -4,9 +4,12 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 
 ## Next
 
+- Validate independent maintainer-authored SQL impact tasks and actual investigation time before making production-accuracy or time-savings claims. The new 100-question public-code development evaluation is source-reviewed but project-authored; its generic retrieval Recall@5 remains 48%.
+- Continue improving broad paraphrase retrieval. See [v1 implementation and evidence](docs/v1-readiness.md); SDK/Claude automatic checks and recorded native Codex transport evidence do not measure model reasoning.
+
 0. **MCP Registry discovery**: the 0.8.0 release workflow publishes `server.json` after PyPI succeeds, using GitHub OIDC. Verify the live entry after each release; a local manifest alone does not establish publication. See [discovery instructions](docs/discovery.md).
 1. **Remaining data-flow gaps**: non-sink SQL proc-name literals (`Run("usp_X")`), EF `this.ToTable(..)` inside `EntityTypeConfiguration<T>` (entity not taken from the base class yet), and EF updates through tracked entities when the entity was loaded in another method than the one calling `SaveChanges` (only same-method read + `SaveChanges` is listed, as uncertain).
-2. **C# call graph gaps**: overload resolution by argument type, delegates / lambdas / extension methods, call chains longer than one level. Without Roslyn these stay approximate; edges carry `confirmed` / `probable` / `candidate`.
+2. **C# call graph gaps**: overload resolution by argument type, delegates / lambdas / extension methods, return-type inference across chained receiver expressions. Without Roslyn these stay approximate; edges carry `confirmed` / `probable` / `candidate`.
 
 ## Deferred (not worth doing yet)
 
@@ -21,6 +24,8 @@ Priorities come from the benchmark (`benchmarks/run_benchmark.py`, baseline in `
 | `codebase_find_references` (upgrade) | `relations` already returns name-matched references | Done in part: `relations` already separates confirmed / probable / candidate callers |
 
 ## Done
+
+- Unreleased v1 preparation: scoped four-part SQL identities and ambiguity handling; AST-byte C# owners and distinct compact overloads; representative evidence paths/depth warnings; versioned MCP/CLI schemas and protocol negotiation; project initialization, progress, offline reports; lexical mode, revision-bound vector cache; frozen real-project/scaling/client evidence and CI artifacts.
 
 - 0.9.0: SQL alias/hint/TOP and quoted-name fixes; cursor/TRIM false-positive removal; nested comments and uncertain OPENQUERY analysis; comma sources after JOIN; BOM-aware Unicode source/context handling; constant SQL method attribution; VB6 SQL analysis; separate DDL/schema impact; explicit ignore overrides; modular navigation/context/rendering; lint/mypy CI and Windows Python 3.10/3.12/3.13.
 

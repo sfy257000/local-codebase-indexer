@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "result_type": {
+      "type": "string",
+      "const": "codebase_get_optimized_context"
+    },
+    "file_path": {
+      "type": "string"
+    },
+    "context": {
+      "type": "string"
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "truncation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "total",
+          "returned"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "result_type",
+    "file_path",
+    "context",
+    "truncated"
+  ],
+  "additionalProperties": true
+}

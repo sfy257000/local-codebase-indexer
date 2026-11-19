@@ -1,0 +1,389 @@
+{
+  "source_log_sha256": "29a5d07c0fa74ec541d99b03f648a7a16253256e4e18a9f0bc8d557c63e9c023",
+  "events": [
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "item_1",
+        "type": "mcp_tool_call",
+        "server": "local-indexer",
+        "tool": "codebase_get_data_access",
+        "arguments": {
+          "object_name": "dbo.Lot"
+        },
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "table dbo.Lot\n  defined in x.sql:1\n  WRITTEN BY (1)\n    [confirmed] file x.sql  x.sql:3  update (sql)\n  SCHEMA CHANGED BY (1)\n    [confirmed] file x.sql  x.sql:1  create_table (sql)"
+            }
+          ],
+          "structured_content": {
+            "object": "dbo.Lot",
+            "key": "lot",
+            "found": true,
+            "kind": "table",
+            "definitions": [
+              {
+                "file_path": "x.sql",
+                "line": 1,
+                "type": "table",
+                "qualified_name": "dbo.Lot",
+                "id": "x.sql#table:dbo.Lot@1",
+                "object_identity": "[dbo].[lot]"
+              }
+            ],
+            "object_identity": "[dbo].[lot]",
+            "ambiguous": false,
+            "readers": [],
+            "writers": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 3,
+                "target": "Lot",
+                "op": "update",
+                "access": "write",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "UPDATE dbo.Lot SET id=1;",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 3,
+                    "relation": "write",
+                    "confidence": "confirmed",
+                    "evidence": "UPDATE dbo.Lot SET id=1;"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "executed_by": [],
+            "mapped_by": [],
+            "schema_changes": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 1,
+                "target": "Lot",
+                "op": "create_table",
+                "access": "schema",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "CREATE TABLE dbo.Lot(id int);",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 1,
+                    "relation": "schema",
+                    "confidence": "confirmed",
+                    "evidence": "CREATE TABLE dbo.Lot(id int);"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "possible": [],
+            "programs": [],
+            "no_known_caller": [],
+            "notes": [
+              "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method's callers."
+            ],
+            "coverage": {
+              "complete_within_limits": true,
+              "sql_depth": 4,
+              "call_depth": 8,
+              "warnings": [],
+              "unresolved_bindings": 0,
+              "scope": "indexed supported static patterns; not runtime completeness"
+            },
+            "filters": {
+              "confidence": null
+            },
+            "schema_version": 1,
+            "result_type": "codebase_get_data_access"
+          }
+        },
+        "error": null,
+        "status": "completed"
+      }
+    },
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "item_2",
+        "type": "mcp_tool_call",
+        "server": "local-indexer",
+        "tool": "codebase_get_data_access",
+        "arguments": {
+          "object_name": "dbo.Lot"
+        },
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "table dbo.Lot\n  defined in x.sql:1\n  WRITTEN BY (1)\n    [confirmed] file x.sql  x.sql:3  update (sql)\n  SCHEMA CHANGED BY (1)\n    [confirmed] file x.sql  x.sql:1  create_table (sql)"
+            }
+          ],
+          "structured_content": {
+            "object": "dbo.Lot",
+            "key": "lot",
+            "found": true,
+            "kind": "table",
+            "definitions": [
+              {
+                "file_path": "x.sql",
+                "line": 1,
+                "type": "table",
+                "qualified_name": "dbo.Lot",
+                "id": "x.sql#table:dbo.Lot@1",
+                "object_identity": "[dbo].[lot]"
+              }
+            ],
+            "object_identity": "[dbo].[lot]",
+            "ambiguous": false,
+            "readers": [],
+            "writers": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 3,
+                "target": "Lot",
+                "op": "update",
+                "access": "write",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "UPDATE dbo.Lot SET id=1;",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 3,
+                    "relation": "write",
+                    "confidence": "confirmed",
+                    "evidence": "UPDATE dbo.Lot SET id=1;"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "executed_by": [],
+            "mapped_by": [],
+            "schema_changes": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 1,
+                "target": "Lot",
+                "op": "create_table",
+                "access": "schema",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "CREATE TABLE dbo.Lot(id int);",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 1,
+                    "relation": "schema",
+                    "confidence": "confirmed",
+                    "evidence": "CREATE TABLE dbo.Lot(id int);"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "possible": [],
+            "programs": [],
+            "no_known_caller": [],
+            "notes": [
+              "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method's callers."
+            ],
+            "coverage": {
+              "complete_within_limits": true,
+              "sql_depth": 4,
+              "call_depth": 8,
+              "warnings": [],
+              "unresolved_bindings": 0,
+              "scope": "indexed supported static patterns; not runtime completeness"
+            },
+            "filters": {
+              "confidence": null
+            },
+            "schema_version": 1,
+            "result_type": "codebase_get_data_access"
+          }
+        },
+        "error": null,
+        "status": "completed"
+      }
+    },
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "item_3",
+        "type": "mcp_tool_call",
+        "server": "local-indexer",
+        "tool": "codebase_get_data_access",
+        "arguments": {
+          "object_name": "dbo.Lot"
+        },
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "table dbo.Lot\n  defined in x.sql:1\n  WRITTEN BY (1)\n    [confirmed] file x.sql  x.sql:3  update (sql)\n  SCHEMA CHANGED BY (1)\n    [confirmed] file x.sql  x.sql:1  create_table (sql)"
+            }
+          ],
+          "structured_content": {
+            "object": "dbo.Lot",
+            "key": "lot",
+            "found": true,
+            "kind": "table",
+            "definitions": [
+              {
+                "file_path": "x.sql",
+                "line": 1,
+                "type": "table",
+                "qualified_name": "dbo.Lot",
+                "id": "x.sql#table:dbo.Lot@1",
+                "object_identity": "[dbo].[lot]"
+              }
+            ],
+            "object_identity": "[dbo].[lot]",
+            "ambiguous": false,
+            "readers": [],
+            "writers": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 3,
+                "target": "Lot",
+                "op": "update",
+                "access": "write",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "UPDATE dbo.Lot SET id=1;",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 3,
+                    "relation": "write",
+                    "confidence": "confirmed",
+                    "evidence": "UPDATE dbo.Lot SET id=1;"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "executed_by": [],
+            "mapped_by": [],
+            "schema_changes": [
+              {
+                "source": "x.sql",
+                "source_type": "file",
+                "source_id": null,
+                "file_path": "x.sql",
+                "line": 1,
+                "target": "Lot",
+                "op": "create_table",
+                "access": "schema",
+                "via": "sql",
+                "confidence": "confirmed",
+                "evidence": "CREATE TABLE dbo.Lot(id int);",
+                "detail": "",
+                "depth": 0,
+                "via_chain": [],
+                "object_identity": "[dbo].[lot]",
+                "path": [
+                  {
+                    "symbol": "x.sql",
+                    "file_path": "x.sql",
+                    "line": 1,
+                    "relation": "schema",
+                    "confidence": "confirmed",
+                    "evidence": "CREATE TABLE dbo.Lot(id int);"
+                  },
+                  {
+                    "symbol": "[dbo].[lot]",
+                    "relation": "sql_object"
+                  }
+                ]
+              }
+            ],
+            "possible": [],
+            "programs": [],
+            "no_known_caller": [],
+            "notes": [
+              "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method's callers."
+            ],
+            "coverage": {
+              "complete_within_limits": true,
+              "sql_depth": 4,
+              "call_depth": 8,
+              "warnings": [],
+              "unresolved_bindings": 0,
+              "scope": "indexed supported static patterns; not runtime completeness"
+            },
+            "filters": {
+              "confidence": null
+            },
+            "schema_version": 1,
+            "result_type": "codebase_get_data_access"
+          }
+        },
+        "error": null,
+        "status": "completed"
+      }
+    }
+  ]
+}

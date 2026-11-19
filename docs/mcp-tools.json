@@ -1,0 +1,1038 @@
+{
+  "schema_version": 1,
+  "protocol_versions": [
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05"
+  ],
+  "tools": [
+    {
+      "name": "codebase_semantic_search",
+      "description": "Find code from a description when you do not know the identifiers (Chinese or English; hybrid keyword + symbol + vector search). For an exact identifier or string literal, plain grep is faster and complete.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "lexical"
+            ],
+            "default": "hybrid"
+          },
+          "query": {
+            "type": "string",
+            "description": "Semantic explanation of what you are looking for."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum chunks to return (default 5).",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Continue using pagination.next_cursor; query and filters must remain unchanged."
+          },
+          "explain": {
+            "type": "boolean",
+            "default": false,
+            "description": "Explain matched query terms, synonym sources, layer ranks, and data-access evidence."
+          },
+          "file_pattern": {
+            "type": "string",
+            "description": "File glob, e.g. *Repository*.cs"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "csharp",
+              "python",
+              "javascript",
+              "typescript",
+              "tsx",
+              "text"
+            ]
+          },
+          "related": {
+            "type": "boolean",
+            "description": "Also list files linked to the top hits in the dependency graph.",
+            "default": false
+          },
+          "detail": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return full structured nested collections; result limits and lookup bounds still apply."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_semantic_search"
+          },
+          "query": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "file_path",
+                "start_line",
+                "end_line",
+                "snippet",
+                "score",
+                "matched_by"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "start_line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "matched_by": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "related_files": {
+            "type": "array"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "lexical"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "query",
+          "results",
+          "related_files"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_get_symbol_relations",
+      "description": "Who calls a method (resolved through interfaces / DI to the implementation, with confidence levels), what it calls, and who implements or inherits a type. Use instead of grep when the call goes through an interface. Overloaded names: pass Type.Method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol_name": {
+            "type": "string",
+            "description": "Class, interface or method name; \"Type.Method\" or a full qualified name picks one class, e.g. \"IExistOpenHandleService\" or \"SFC_MLotRepository.InsertAsync\"."
+          },
+          "relation_direction": {
+            "type": "string",
+            "enum": [
+              "upstream",
+              "downstream",
+              "both"
+            ]
+          },
+          "detail": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return full structured nested collections; result limits and lookup bounds still apply."
+          }
+        },
+        "required": [
+          "symbol_name"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_get_symbol_relations"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "definitions": {
+            "type": "array"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "symbol",
+          "definitions"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_get_optimized_context",
+      "description": "Return only the relevant lines around focus lines of a file to minimise token usage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Target source file (relative to project root)."
+          },
+          "focus_lines": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Target lines identified by search tools."
+          },
+          "padding_lines": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Surrounding lines to extract (default 15).",
+            "default": 15
+          }
+        },
+        "required": [
+          "file_path",
+          "focus_lines"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_get_optimized_context"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "file_path",
+          "context",
+          "truncated"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_get_data_access",
+      "description": "Who reads, writes or executes a database table / stored procedure / view, and which programs (controller actions, followed through the C# call graph) end up touching it. Covers SQL files, C# SQL strings (literals, concatenation, StringBuilder) via Dapper / ADO.NET, EF LINQ on DbSets and EF mappings, plus callers of procedures. Prefer this over grep for impact analysis of a table. Dynamic SQL is reported as uncertain.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_name": {
+            "type": "string",
+            "description": "Table, view or procedure name, optionally schema qualified, e.g. \"MES_Lot\" or \"dbo.usp_Lot_UpdateStatus\"."
+          },
+          "sql_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 4
+          },
+          "call_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64,
+            "default": 8
+          },
+          "detail": {
+            "type": "boolean",
+            "description": "List every entry instead of the 5-entry summary.",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page size per section."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          }
+        },
+        "required": [
+          "object_name"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_get_data_access"
+          },
+          "object": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "readers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "writers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "executed_by": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "mapped_by": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "schema_changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "possible": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "file_path",
+                "line",
+                "access",
+                "confidence"
+              ],
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "probable",
+                    "uncertain"
+                  ]
+                },
+                "object_identity": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "symbol",
+                      "relation"
+                    ],
+                    "properties": {
+                      "symbol": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "ambiguous": {
+            "type": "boolean"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "required": [
+              "complete_within_limits",
+              "warnings"
+            ],
+            "properties": {
+              "complete_within_limits": {
+                "type": "boolean"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "object",
+          "key",
+          "found"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_impact_analysis",
+      "description": "Impact of a change: symbols on changed lines (git diff), tables / procedures they access, and the programs, Razor pages and caller-less entry points that reach them. Use before committing or when reviewing a branch.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "string",
+            "description": "Git revision or range to diff against, e.g. \"main\", \"HEAD~3\", \"origin/main...HEAD\". Omit for uncommitted work (staged, unstaged, untracked)."
+          },
+          "detail": {
+            "type": "boolean",
+            "description": "List every changed symbol instead of the first 15.",
+            "default": false
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_impact_analysis"
+          },
+          "changed": {
+            "type": "array"
+          },
+          "tables": {
+            "type": "array"
+          },
+          "programs": {
+            "type": "array"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "changed",
+          "tables",
+          "programs"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_index_status",
+      "description": "Report whether the index can be trusted: freshness, git commit it was built from, files that failed to index, and consistency checks. Does not refresh the index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return full structured nested collections; result limits and lookup bounds still apply."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_index_status"
+          },
+          "root": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "root",
+          "state"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codebase_index_doctor",
+      "description": "Diagnose index coverage and explain why a file is excluded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return full structured nested collections; result limits and lookup bounds still apply."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "result_type": {
+            "type": "string",
+            "const": "codebase_index_doctor"
+          },
+          "root": {
+            "type": "string"
+          },
+          "eligible_files": {
+            "type": "integer"
+          },
+          "truncation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "total",
+                "returned"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "returned": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "result_type",
+          "root",
+          "eligible_files"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}
