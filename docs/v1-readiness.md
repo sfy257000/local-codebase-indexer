@@ -61,23 +61,35 @@ Search scores remain raw fused RRF scores, not probabilities; final ordering can
 
 The 100 English/Chinese questions were written and source-reviewed for this project before the first run. The source commits are fixed; neither questions nor gold answers were changed during ranking work. They are development evaluation questions over real code, not independently authored user tasks or a held-out benchmark. The first hard per-file diversity experiment regressed on SimpleCRUD and was replaced with a soft penalty; this evaluation therefore informed development.
 
-| Project | Questions | 0.9.1 symbol-aware Recall@5 | Candidate |
-|---|---:|---:|---:|
-| Dapper | 34 | 35.3% | 35.3% |
-| PetaPoco | 34 | 44.1% | 44.1% |
-| SimpleCRUD | 32 | 65.6% | 65.6% |
-| All questions | 100 | 48.0% | 48.0% |
+| Project | Questions | 0.9.1 symbol-aware Recall@5 | Candidate hybrid | Candidate lexical |
+|---|---:|---:|---:|---:|
+| Dapper | 34 | 35.3% | 35.3% | 38.2% |
+| PetaPoco | 34 | 44.1% | 44.1% | 50.0% |
+| SimpleCRUD | 32 | 65.6% | 65.6% | 75.0% |
+| All questions | 100 | 48.0% | 48.0% | 54.0% |
 
-Overall MRR changes from **0.3345 to 0.3283**; ranking is slightly worse by this measure. File+symbol matching is stricter than the earlier file-only tool comparison. These results expose the limits of default hashing for broad natural-language questions. They do not measure SQL impact precision/recall, independent production accuracy, model-token cost, or human investigation-time savings. Those claims require their own verified task data and observations; this work does not invent them.
+Overall hybrid MRR changes from **0.3345 to 0.3283**; ranking is slightly worse by this measure. The separately selected lexical mode reaches **54% Recall@5 (+6 percentage points)** and **0.3988 MRR** on all 100 questions. This is one fixed mode for the entire set, not a best-of-modes choice per query; it remains optional rather than changing defaults based on this development set. File+symbol matching is stricter than the earlier file-only tool comparison. These results expose the limits of default hashing for broad natural-language questions. They do not measure SQL impact precision/recall, independent production accuracy, model-token cost, or human investigation-time savings. Those claims require their own verified task data and observations; this work does not invent them.
 
 CI compares each project's Recall@5 to the same frozen 0.9.1 source snapshot without allowing a recall drop by default. MRR and timings remain visible in the artifact. Absolute semantic-search accuracy remains a product limitation, rather than an implied v1 quality guarantee.
 
 ```bash
-python benchmarks/real_projects.py --baseline-source /path/to/0.9.1-checkout --save /tmp/real-projects.json
+python benchmarks/real_projects.py --baseline-source /path/to/0.9.1-checkout --lexical --save /tmp/real-projects.json
 python benchmarks/compare_tools.py --repeats 3 --navigation --save /tmp/comparison.json --details /tmp/queries.jsonl
 ```
 
 Use output paths suitable for your OS. The runner fetches pinned public sources and analyzes them as text; it does not execute their code or database tests. Source/corpus/dataset fingerprints and raw query results are recorded. The original 0.9.1 [comparison](tool-comparison.md) is preserved; [candidate file-level measurements](../benchmarks/v1-tool-comparison.json) are a separate capture.
+
+## Candidate versus the literal-search baseline
+
+The separately captured [candidate file-level comparison](../benchmarks/v1-tool-comparison.json) uses the same frozen questions/corpora as the historical comparison. It compares top-five-file `rg + BM25` with the files represented in the indexer's top five chunks; it does not compare complete Claude/Serena workflows or symbol-aware relevance. [Per-query records](../benchmarks/v1-tool-comparison-queries.jsonl) retain every result.
+
+| Workload | rg + BM25 file Recall@5 | Candidate | Difference |
+|---|---:|---:|---:|
+| Synthetic MES, 42 questions | 81.0% | 94.0% | +13.1 pp |
+| Synthetic MES with noise, 42 questions | 81.0% | 90.5% | +9.5 pp |
+| Real Python stdlib, 12 questions | 100.0% | 79.2% | −20.8 pp |
+
+The synthetic navigation task still reaches 5/5 evidence files versus 3/5 for a single literal table-name search (+40 pp); richer CLI reporting is slower. A multi-step expert or model-assisted grep investigation could find more than that single-call baseline. These measurements support a bounded maintenance workflow, not universal retrieval superiority.
 
 ## Maintainer-supplied project acceptance
 
@@ -97,11 +109,11 @@ python benchmarks/real_projects.py --manifest benchmarks/maintainer-project.json
 
 | Actual chunks | Initial index | First CLI query | Warm p95, cache off → on | Query peak RSS, cache on |
 |---|---:|---:|---:|---:|
-| 10,000 | 1.53 s | 0.37 s | 168 → 143 ms | 65.8 MiB |
-| 50,000 | 7.69 s | 1.09 s | 787 → 730 ms | 211.3 MiB |
-| 100,000 | 13.83 s | 2.19 s | 2,202 → 2,010 ms | 401.7 MiB |
+| 10,000 | 1.17 s | 0.51 s | 177 → 137 ms | 65.7 MiB |
+| 50,000 | 7.49 s | 0.98 s | 986 → 665 ms | 211.4 MiB |
+| 100,000 | 13.34 s | 2.52 s | 3,210 → 1,739 ms | 401.7 MiB |
 
-At 100k chunks, updating 1/10 files takes about 0.98/1.05 s; refreshing after a Git checkout rewriting 100 source files takes 2.34 s, excluding checkout time. These are machine-specific sample timings; p95 from five repeats is not a population latency guarantee. Raw records include all timings, database sizes, index/query memory separately, and actual update counts.
+At 100k chunks, updating 1/10 files takes about 0.89/0.92 s; refreshing after a Git checkout rewriting 100 source files takes 2.33 s, excluding checkout time. These are machine-specific sample timings; p95 from five repeats is not a population latency guarantee. At 100k, the measured warm p95 reduction is 45.8%; it compares cache off/on on this generated workload and is not a whole-application or CLI-startup speedup. Raw records include all timings, database sizes, index/query memory separately, and actual update counts.
 
 ```bash
 python benchmarks/performance.py --sizes 10000 50000 100000 --repeats 5 --save /tmp/scaling.json

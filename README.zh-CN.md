@@ -107,9 +107,13 @@ local-codebase-indexer --root "/path/to/project" search "项目标识符" --mode
 
 SQL 对象保留数据库／schema 的完整身份；短名称有歧义时列出候选。证据链会说明 SQL／C# 深度截断，MCP 也提供带版本的结构化 JSON。HTML 报告可离线打开，包含 SVG 关系图、源代码位置、置信度标签与完整证据。
 
-[HTML 报告示例](assets/impact-report.html) · [实现、API 契约、客户端验证及测量限制（英文）](docs/v1-readiness.md)。新增三个真实公开 C# 项目、100 题评测，包含符号匹配的整体 Recall@5 与 0.9.1 同为 **48.0%**，MRR 为 **0.3345 → 0.3283**。这揭示一般自然语言搜索的限制，并非独立的生产环境准确率证明。
+[HTML 报告示例](assets/impact-report.html) · [实现、API 契约、客户端验证及测量限制（英文）](docs/v1-readiness.md)。新增三个真实公开 C# 项目、100 题评测，包含符号匹配的整体 Recall@5 与 0.9.1 同为 **48.0%**，MRR 为 **0.3345 → 0.3283**。相同 100 题固定使用可选的 lexical 模式可达 **54.0%（+6 个百分点）**、MRR **0.3988**。这揭示一般自然语言搜索的限制，并非独立的生产环境准确率证明。
 
 另用你提供的 [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) 建立 12 题单独统计的 Python 查询：前五条找到正确符号由 **7/12 → 8/12（+8.3 个百分点）**。临时副本的索引、过期检测、单文件更新与变更符号影响分析通过。[原始结果与限制](docs/v1-readiness.md#maintainer-supplied-project-acceptance)；这尚不能验证生产 SQL 项目的影响分析。
+
+在生成的 10 万个代码块测试中，进程内向量缓存让 5 次暖查询样本的 p95 由 **3.21 秒降至 1.74 秒（降低 45.8%）**，查询进程峰值内存 **401.7 MiB**。这是单机特定测试结果，不能当成 CLI 启动或生产项目的性能保证。[原始性能数据](benchmarks/performance-results.json)。
+
+此分支对 `rg + BM25` 的文件召回率比较为：合成 MES **+13.1 个百分点**、加入噪声 **+9.5 个百分点**，Python 标准库 **−20.8 个百分点**。[本次结果与方法](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline)同时保留较差的情况。
 
 <details>
 <summary>预览影响分析报告</summary>

@@ -107,9 +107,13 @@ local-codebase-indexer --root "/path/to/project" search "project terminology" --
 
 Qualified SQL objects now retain separate database/schema identities. Ambiguous short names list candidates; bounded evidence paths explain SQL/C# call depth cutoffs. MCP also returns versioned structured JSON. HTML reports work offline and include an SVG graph, source locations, confidence, and full evidence.
 
-[Sample HTML report](assets/impact-report.html) · [implementation, API contracts, client checks, and measured limitations](docs/v1-readiness.md). The new 100-question evaluation uses three real public C# repositories: overall symbol-aware Recall@5 remains **48.0%** versus 0.9.1, with MRR **0.3345 → 0.3283**. This exposes limits of general natural-language retrieval; it is not independent production-accuracy evidence.
+[Sample HTML report](assets/impact-report.html) · [implementation, API contracts, client checks, and measured limitations](docs/v1-readiness.md). The new 100-question evaluation uses three real public C# repositories: overall symbol-aware Recall@5 remains **48.0%** versus 0.9.1, with MRR **0.3345 → 0.3283**. Optional lexical mode reaches **54.0% (+6 percentage points)** and MRR **0.3988** across the same 100 questions. This exposes limits of general natural-language retrieval; it is not independent production-accuracy evidence.
 
 The maintainer-supplied [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) adds 12 separate source-reviewed Python questions: **7/12 → 8/12 correct symbols in the top five (+8.3 percentage points)**. Indexing, stale detection, one-file updates and changed-symbol impact passed in a disposable copy. [Raw results and limits](docs/v1-readiness.md#maintainer-supplied-project-acceptance); this does not validate production SQL impact.
+
+On the generated 100k-chunk scaling workload, in-process vector caching changes warm p95 from **3.21 s to 1.74 s (45.8% lower)** across five samples; the cached query worker peaks at **401.7 MiB**. These are machine-specific measurements, not CLI-startup or production-workload guarantees. [Raw scaling data](benchmarks/performance-results.json).
+
+The candidate file-level `rg + BM25` comparison measures **+13.1 pp** on synthetic MES, **+9.5 pp** with noise, and **−20.8 pp** on Python stdlib; [current results and protocol](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline) keep the losses visible.
 
 <details>
 <summary>Preview the impact report</summary>

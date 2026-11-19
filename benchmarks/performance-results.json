@@ -1,0 +1,441 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-19T08:23:24.741225+00:00",
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "source_sha256": "73e5e47776c9587309535030ec41949acacbec6af63c216bb94843460847773b",
+  "repeats": 5,
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "sizes": {
+    "10000": {
+      "requested_functions": 10000,
+      "actual_chunks": 10000,
+      "files": 100,
+      "initial_index_ms": 1172.182,
+      "index_peak_rss_mb": 31.74,
+      "database_bytes": 69907128,
+      "warm_query": {
+        "cache_disabled": {
+          "first_in_process_ms": 306.527,
+          "warm_ms": [
+            176.643,
+            147.99,
+            149.427,
+            151.671,
+            147.562
+          ],
+          "p50_ms": 149.427,
+          "p95_ms": 176.643,
+          "peak_rss_mb": 66.43,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00001.py",
+              5,
+              7
+            ],
+            [
+              "handlers_00002.py",
+              69,
+              71
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ]
+          ]
+        },
+        "cache_128mb": {
+          "first_in_process_ms": 271.762,
+          "warm_ms": [
+            136.501,
+            110.385,
+            119.441,
+            136.347,
+            117.553
+          ],
+          "p50_ms": 119.441,
+          "p95_ms": 136.501,
+          "peak_rss_mb": 65.72,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00001.py",
+              5,
+              7
+            ],
+            [
+              "handlers_00002.py",
+              69,
+              71
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ]
+          ]
+        }
+      },
+      "cold_cli_ms": 505.313,
+      "updates": {
+        "1_files": {
+          "elapsed_ms": 120.539,
+          "stats": {
+            "scanned": 100,
+            "added": 0,
+            "updated": 1,
+            "unchanged": 99,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 10000,
+            "symbols": 10000,
+            "warnings": []
+          }
+        },
+        "10_files": {
+          "elapsed_ms": 262.675,
+          "stats": {
+            "scanned": 100,
+            "added": 0,
+            "updated": 10,
+            "unchanged": 90,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 10000,
+            "symbols": 10000,
+            "warnings": []
+          }
+        },
+        "git_switch": {
+          "checkout_ms": 15.252,
+          "refresh_ms": 1696.786,
+          "rewritten_source_files": 100,
+          "stats": {
+            "scanned": 100,
+            "added": 0,
+            "updated": 100,
+            "unchanged": 0,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 10000,
+            "symbols": 10000,
+            "warnings": []
+          }
+        }
+      },
+      "peak_rss_mb": 32.14
+    },
+    "50000": {
+      "requested_functions": 50000,
+      "actual_chunks": 50000,
+      "files": 500,
+      "initial_index_ms": 7493.555,
+      "index_peak_rss_mb": 39.24,
+      "database_bytes": 346547176,
+      "warm_query": {
+        "cache_disabled": {
+          "first_in_process_ms": 1935.336,
+          "warm_ms": [
+            796.017,
+            985.721,
+            785.762,
+            761.613,
+            762.434
+          ],
+          "p50_ms": 785.762,
+          "p95_ms": 985.721,
+          "peak_rss_mb": 215.45,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ],
+            [
+              "handlers_00252.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00343.py",
+              225,
+              227
+            ]
+          ]
+        },
+        "cache_128mb": {
+          "first_in_process_ms": 1209.132,
+          "warm_ms": [
+            590.484,
+            653.827,
+            596.915,
+            664.91,
+            617.005
+          ],
+          "p50_ms": 617.005,
+          "p95_ms": 664.91,
+          "peak_rss_mb": 211.44,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ],
+            [
+              "handlers_00252.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00343.py",
+              225,
+              227
+            ]
+          ]
+        }
+      },
+      "cold_cli_ms": 984.3,
+      "updates": {
+        "1_files": {
+          "elapsed_ms": 443.766,
+          "stats": {
+            "scanned": 500,
+            "added": 0,
+            "updated": 1,
+            "unchanged": 499,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 50000,
+            "symbols": 50000,
+            "warnings": []
+          }
+        },
+        "10_files": {
+          "elapsed_ms": 528.504,
+          "stats": {
+            "scanned": 500,
+            "added": 0,
+            "updated": 10,
+            "unchanged": 490,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 50000,
+            "symbols": 50000,
+            "warnings": []
+          }
+        },
+        "git_switch": {
+          "checkout_ms": 16.703,
+          "refresh_ms": 1592.905,
+          "rewritten_source_files": 100,
+          "stats": {
+            "scanned": 500,
+            "added": 0,
+            "updated": 100,
+            "unchanged": 400,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 50000,
+            "symbols": 50000,
+            "warnings": []
+          }
+        }
+      },
+      "peak_rss_mb": 40.1
+    },
+    "100000": {
+      "requested_functions": 100000,
+      "actual_chunks": 100000,
+      "files": 1000,
+      "initial_index_ms": 13338.764,
+      "index_peak_rss_mb": 46.62,
+      "database_bytes": 520262480,
+      "warm_query": {
+        "cache_disabled": {
+          "first_in_process_ms": 2053.771,
+          "warm_ms": [
+            1565.085,
+            1954.415,
+            3209.745,
+            1791.893,
+            1794.518
+          ],
+          "p50_ms": 1794.518,
+          "p95_ms": 3209.745,
+          "peak_rss_mb": 401.61,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00505.py",
+              25,
+              27
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00252.py",
+              13,
+              15
+            ]
+          ]
+        },
+        "cache_128mb": {
+          "first_in_process_ms": 1629.45,
+          "warm_ms": [
+            1611.643,
+            1578.64,
+            1739.104,
+            1676.346,
+            1601.317
+          ],
+          "p50_ms": 1611.643,
+          "p95_ms": 1739.104,
+          "peak_rss_mb": 401.74,
+          "result_spans": [
+            [
+              "handlers_00000.py",
+              13,
+              15
+            ],
+            [
+              "handlers_00505.py",
+              25,
+              27
+            ],
+            [
+              "handlers_00029.py",
+              249,
+              251
+            ],
+            [
+              "handlers_00000.py",
+              29,
+              31
+            ],
+            [
+              "handlers_00252.py",
+              13,
+              15
+            ]
+          ]
+        }
+      },
+      "cold_cli_ms": 2520.311,
+      "updates": {
+        "1_files": {
+          "elapsed_ms": 893.452,
+          "stats": {
+            "scanned": 1000,
+            "added": 0,
+            "updated": 1,
+            "unchanged": 999,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 100000,
+            "symbols": 100000,
+            "warnings": []
+          }
+        },
+        "10_files": {
+          "elapsed_ms": 924.917,
+          "stats": {
+            "scanned": 1000,
+            "added": 0,
+            "updated": 10,
+            "unchanged": 990,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 100000,
+            "symbols": 100000,
+            "warnings": []
+          }
+        },
+        "git_switch": {
+          "checkout_ms": 20.2,
+          "refresh_ms": 2328.504,
+          "rewritten_source_files": 100,
+          "stats": {
+            "scanned": 1000,
+            "added": 0,
+            "updated": 100,
+            "unchanged": 900,
+            "deleted": 0,
+            "skipped": 0,
+            "failed": 0,
+            "chunks": 100000,
+            "symbols": 100000,
+            "warnings": []
+          }
+        }
+      },
+      "peak_rss_mb": 47.83
+    }
+  },
+  "limitations": [
+    "Generated repeated Python functions, not real C# projects or SQL data-flow accuracy.",
+    "Warm queries are in-process; cold CLI includes process startup and incremental freshness scanning.",
+    "p95 uses only the recorded small number of repetitions; no population-latency guarantee."
+  ]
+}
