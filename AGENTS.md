@@ -80,7 +80,7 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 
 ## SQL and legacy-source correctness (0.9.0)
 
-- Run `python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py`, `python -m mypy`, and the full pytest suite before publishing. CI covers Linux and Windows on Python 3.10, 3.12, and 3.13.
+- Run `python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py benchmarks/real_projects.py benchmarks/performance.py tests/test_v1_*.py`, `python -m mypy`, and the full pytest suite before publishing. CI covers Linux and Windows on Python 3.10, 3.11, 3.12, and 3.13.
 - Dependency declarations live in `pyproject.toml`; `requirements.txt` was removed to avoid drift.
 - Source decoding and context extraction handle BOM-tagged UTF-16/UTF-32. True binary files are excluded consistently by scanning and status.
 - `data-access` has additive `schema_changes` entries (`access=schema`) for table/index DDL. They are not row writers. File-level SQL changes appear in impact with before/current/after labels and source evidence.
@@ -94,3 +94,14 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 - SQL object definitions come only from SQL sources; application symbol navigation still includes Python/JS functions.
 - Index format 10 invalidates older parsed edges and rebuilds them on the first update. Keep package and Registry versions synchronized when preparing a release.
 - Tool comparisons live in `docs/tool-comparison.md`; keep language READMEs in sync, cite upstream capabilities, and distinguish a literal-search baseline from a full Claude workflow. Do not claim measured speed/token/accuracy superiority without a corresponding experiment.
+
+## Unreleased v1 preparation
+
+- Index format 11 preserves SQL identity as lossless JSON components. Keep the last-segment key only as an indexed lookup accelerator; never use it alone to identify an object or expand procedure dependencies. Ambiguous short names must not combine confirmed accessors.
+- C# symbol/SQL ownership uses AST byte ranges; same-line methods and overloads must remain separate. Symbol IDs are opaque revision-bound values.
+- `path`, action-specific `programs[].paths`, and `coverage.warnings` explain representative static chains and SQL/C# cutoffs. Never claim complete runtime coverage from `complete_within_limits`.
+- Preserve text MCP responses and the seven names. Structured outputs and corresponding CLI JSON use schema_version 1; keep MCP defaults bounded (5 data-access entries per section, exact pagination, nested truncation metadata) and only unbound nested data for explicit detail=true; export/check docs/contracts with `python scripts/export_contracts.py --check`. Supported old protocol versions must negotiate correctly.
+- `init` writes project-local client configuration only, preserves unrelated settings, rejects conflicts/symlink escapes, and leaves client trust prompts intact. Report export must escape source text, work without remote assets, and require explicit overwrite.
+- Cache vectors only within a configured budget and a committed index revision/embedder identity; scoped searches and other-process updates must not reuse stale/wrong rows. Lexical mode skips vectors and SQL routing; bind cursors to mode.
+- Keep benchmarks/real-projects.json frozen; it has 100 project-authored development questions over three real pinned repositories, not independent user validation. Never edit gold or lower a regression budget to hide a failure. Preserve losses, workload boundaries and raw observations.
+- Actual Claude/Codex transport tests use a deterministic local model stub, not hosted reasoning. Recorded native Codex events verify a prior tool round trip; automatic CI runs SDK + Claude. Review client configuration and normal state-directory/network needs before invoking optional real-client checks.

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from tree_sitter import Language, Parser
 
+from . import sqlidentity
 from .cscalls import extract_call_sites, member_info
 from .csdata import extract_cs_accesses
 from .sqlaccess import (
@@ -41,6 +42,9 @@ class Symbol:
     type_name: str = ""   # declared / return type (C#), normalised
     min_args: int = -1    # parameter counts for methods and constructors, -1 when not applicable
     max_args: int = -1
+    sql_identity: str = ""
+    start_byte: int = -1
+    end_byte: int = -1
 
 
 @dataclass
@@ -190,11 +194,11 @@ class _Walker:
         qname = f"{prefix}.{name}" if prefix else name
         start = node.start_point[0] + 1
         sym = Symbol(
-            id=f"{self.path}#{typ}:{qname}@{start}",
+            id=f"{self.path}#{typ}:{qname}@{start}:{node.start_byte}",
             name=name, qname=qname, type=typ,
             parent_id=parent.id if parent else None,
             start=start, end=_end_line(node),
-            signature=_signature(node, self.src),
+            signature=_signature(node, self.src), start_byte=node.start_byte, end_byte=node.end_byte,
         )
         if self.language == "csharp":
             sym.type_name, sym.min_args, sym.max_args = member_info(node, self.src)
@@ -417,15 +421,17 @@ def _parse_sql(lines: list[str], text: str, path: str) -> list[Symbol]:
         kind = "procedure" if kind.startswith("proc") else kind
         parts = [_unquote(p) for p in _split_name(m.group(3))]
         name = ".".join(parts)
-        found.append((line, kind, name, parts[-1]))
+        identity = sqlidentity.encode(sqlidentity.contextual(parts, masked, m.start(3)))
+        found.append((line, kind, name, parts[-1], identity))
     syms = []
-    for i, (line, kind, name, short_name) in enumerate(found):
+    for i, (line, kind, name, short_name, identity) in enumerate(found):
         end = (found[i + 1][0] - 1) if i + 1 < len(found) else len(lines)
         end = next((batch - 1 for batch in batch_ends if line < batch <= end), end)
         syms.append(Symbol(
             id=f"{path}#{kind}:{name}@{line}", name=short_name, qname=name, type=kind,
             parent_id=None, start=line, end=max(line, end),
             signature=" ".join(lines[line - 1].split())[:300],
+            sql_identity=identity,
         ))
     return syms
 
@@ -457,6 +463,16 @@ def _sql_file_accesses(lines: list[str], symbols: list[Symbol]) -> list:
         if s.type == "table":
             out.extend(extract_sql_accesses("\n".join(lines[s.start - 1:s.end]), s.start))  # file level
     out.sort(key=lambda a: (a.line, a.access, a.key))
+    full = '\n'.join(lines)
+    masked = mask_sql(full)[0]
+    starts, offset = [], 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    for access in out:
+        if access.identity and access.key != '?':
+            identity = sqlidentity.decode(access.identity)
+            access.identity = sqlidentity.encode(sqlidentity.contextual(list(identity), masked, starts[access.line - 1]))
     return out
 
 

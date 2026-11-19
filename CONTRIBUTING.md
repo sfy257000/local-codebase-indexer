@@ -8,7 +8,7 @@ Use Python 3.10+ in a virtual environment:
 
 ```bash
 python -m pip install -e ".[dev,onnx]" onnx build twine
-python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py
+python -m ruff check local_codebase_indexer scripts benchmarks/compare_tools.py benchmarks/real_projects.py benchmarks/performance.py
 python -m mypy
 python -m pytest -q
 python -m build
@@ -33,3 +33,14 @@ Add verified questions and expected source locations when a new behavior needs c
 Public documentation and Release notes use English, with Traditional/Simplified Chinese README translations. Keep generated demo assets in sync by running `python scripts/render_demo.py` after installing `.[media]`.
 
 Contributions are under this repository's [MIT license](LICENSE).
+
+## v1 readiness checks
+
+Run `python scripts/export_contracts.py --check` and the full tests, including official MCP client schema validation. Optional evaluations:
+
+```bash
+python benchmarks/real_projects.py --baseline-source /path/to/0.9.1-checkout --save /tmp/real-projects.json
+python benchmarks/performance.py --sizes 10000 50000 100000 --save /tmp/performance.json
+```
+
+Use paths suitable for your OS. Questions, pinned sources, gold and budgets are fixed; report losses and failed questions. These are development/public-code/scaling workloads, not independent production accuracy or human investigation studies. Client CLI checks use a deterministic local model; review their configuration/network behavior and normal state-directory needs before running them. See [v1 evidence and limitations](docs/v1-readiness.md).

@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "result_type": {
+      "type": "string",
+      "const": "codebase_impact_analysis"
+    },
+    "changed": {
+      "type": "array"
+    },
+    "tables": {
+      "type": "array"
+    },
+    "programs": {
+      "type": "array"
+    },
+    "truncation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "total",
+          "returned"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "result_type",
+    "changed",
+    "tables",
+    "programs"
+  ],
+  "additionalProperties": true
+}

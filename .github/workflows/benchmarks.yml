@@ -1,0 +1,20 @@
+name: full-benchmarks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scaling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python benchmarks/performance.py --sizes 10000 50000 100000 --repeats 5 --save comparison/scaling.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-scaling
+          path: comparison/
+          if-no-files-found: error

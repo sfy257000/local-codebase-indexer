@@ -105,6 +105,9 @@ def _more(n: int, shown: int, full: bool) -> str:
 
 
 def render_data_access(res: dict, full: bool = False) -> str:
+    if res.get('ambiguous'):
+        return ('Ambiguous SQL object: ' + res['object'] + '\nUse a qualified candidate:\n  ' +
+                '\n  '.join(res['candidates']))
     """Five entries per section by default; full and paginated output never silently truncate."""
     if not res["found"]:
         msg = f'No table or procedure named "{res["object"]}" found.'

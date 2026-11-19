@@ -88,7 +88,7 @@ local-codebase-indexer --root <项目> data-access MES_Lot --full
 
 - **向量存储**：规格中的 `sqlite-vss` 需要原生扩展且已停止维护，这里 `vss_chunks` 改为存 float32 BLOB，用 numpy 暴力计算 cosine，不需要额外安装扩展。
 - **嵌入模型**：默认是内置的 hashing 嵌入（标识符拆词、双词组、中文双字），快速、可复现，但**不理解同义词**。要使用真正的 transformer，把 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 导出为 ONNX，安装 `onnxruntime`、`tokenizers`，并设置 `INDEXER_ONNX_MODEL=<包含 model.onnx 与 tokenizer.json 的文件夹>`（目前使用平均池化，适合 MiniLM，bge 系列建议使用 CLS 池化）。切换嵌入后会自动重建索引。实测（0.4.0）：`all-MiniLM-L6-v2` 让 benchmark MRR 提高 0.08–0.13，但在真实的 3 万 chunk C# / 中文注释项目上，换个说法的查询反而比 hashing 差（MRR 0.29 对 0.48；多语 MiniLM-L12 为 0.41），完整建索引从 2 分钟变成 35–43 分钟。因此默认维持 hashing；领域术语用 `.ai_context/synonyms.json` 比通用模型有效。
-- **C# 调用关系**以有限度的类型推断解析（using / namespace、字段与构造函数注入的类型、`Lazy<T>.Value`、局部变量、`foreach (var x in items.Where(..))` 的元素类型、接口对应实现），每条关系都标置信等级：`confirmed`（接收者类型已知）、`probable`（经由接口或唯一候选）、`candidate`（仅名称相符）。没有 Roslyn，所以不做按参数类型的重载解析、不处理委托 / lambda / 扩展方法，调用链只追一层。继承关系来自 AST，可靠。
+- **C# 调用关系**以有限度的类型推断解析（using / namespace、字段与构造函数注入的类型、`Lazy<T>.Value`、局部变量、`foreach (var x in items.Where(..))` 的元素类型、接口对应实现），每条关系都标置信等级：`confirmed`（接收者类型已知）、`probable`（经由接口或唯一候选）、`candidate`（仅名称相符）。没有 Roslyn，所以不做按参数类型的重载解析、不处理委托 / lambda / 扩展方法，链式接收者表达式的返回类型推断有限；调用图向上追踪另有深度设置。继承关系来自 AST，可靠。
 - 额外增加了 `symbols.qualified_name`、`chunk_metadata.symbol_id`、`raw_refs`、`chunks_fts` 与 `meta` 表。
 
 ## 数据访问（SQL）
@@ -121,6 +121,21 @@ local-codebase-indexer --root <项目> data-access MES_Lot --full
 python -m pytest -q
 ```
 
-## SQL, Unicode, VB6, and schema updates
+## SQL、Unicode、VB6 与 Schema 更新
 
-See [0.9.0 support and upgrade notes](sql-legacy-support.md) for SQL fixes, VB6 confidence limits, separate schema operations, Unicode decoding, and explicit default-directory overrides. The first index update rebuilds format 9.
+[0.9.0 支持与升级说明](sql-legacy-support.md) 包含 SQL 修复、VB6 置信度限制、独立 schema 操作、Unicode 解码及忽略列表覆盖。目前尚未发布的版本会将旧索引重建为格式 11；详见 [v1 实现与证据（英文）](v1-readiness.md)。
+
+## 尚未发布：完整对象名称、证据链与报告
+
+SQL 对象保留 server／database／schema／名称及明确的 `USE` 上下文。短名称有歧义时返回 `ambiguous: true`、`found: false` 与完整 `candidates`，不会合并为确定结果。无法确定命名范围的访问列为 uncertain；名称目前不区分大小写。`coverage.warnings` 说明深度截断与缺少 SQL 定义，证据链是代表路径，不是所有可能执行路径。
+
+```bash
+local-codebase-indexer --root <项目> init --client claude
+local-codebase-indexer --root <项目> init --client codex --no-index
+local-codebase-indexer --root <项目> index --progress
+local-codebase-indexer --root <项目> data-access dbo.Lot --sql-depth 12 --call-depth 16 --json
+local-codebase-indexer --root <项目> search "项目标识符" --mode lexical
+local-codebase-indexer --root <项目> report dbo.Lot --output .ai_context/reports/lot.html
+```
+
+`init` 保留其他项目设置并拒绝覆盖冲突；客户端的信任批准仍按原流程进行。HTML 报告可离线打开，包含 SVG、源代码位置、置信度标签与完整 JSON；也支持 `mermaid`／`json` 格式，覆盖已有报告须加 `--force`。MCP 与对应 CLI JSON 提供 `schema_version: 1`、`result_type`，并保留原有 MCP 文本。向量缓存默认 128 MiB，设置 `INDEXER_VECTOR_CACHE_MB=0` 可停用；随索引版本失效，适用于长期运行的进程，不会跨 CLI 进程共享。[API 契约、测量、客户端证据及限制（英文）](v1-readiness.md)。

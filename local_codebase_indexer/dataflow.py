@@ -14,6 +14,7 @@ import re
 import sqlite3
 from collections import deque
 
+from . import sqlidentity
 from .sqlaccess import _split_name, _unquote
 
 MAX_DEPTH = 4
@@ -67,22 +68,86 @@ def known_object_keys(conn: sqlite3.Connection) -> set[str]:
     return keys
 
 
+class _Catalog:
+    """Resolve names only within explicit, compatible indexed scopes."""
+    def __init__(self, conn):
+        self.conn = conn
+        self.cache = {}
+
+    def objects(self, name):
+        key = name[-1]
+        if key not in self.cache:
+            definitions = self.conn.execute(
+                f"SELECT * FROM symbols WHERE {_SQL_DEFINITION} AND lower(symbol_name)=? "
+                f"AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) ORDER BY file_path,start_line",
+                (key, *SQL_OBJECT_KINDS)).fetchall()
+            if not key.isascii():
+                # SQLite's built-in lower() is ASCII-only; keep Unicode SQL names
+                # consistent with the Python-normalized lookup key.
+                definitions = [d for d in self.conn.execute(
+                    f"SELECT * FROM symbols WHERE {_SQL_DEFINITION} AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
+                    "ORDER BY file_path,start_line", SQL_OBJECT_KINDS)
+                    if d['symbol_name'].lower() == key]
+            rows = self.conn.execute(
+                "SELECT * FROM data_access WHERE target_key=? AND via!='ef_raw' ORDER BY file_path,line", (key,)).fetchall()
+            identities = {self.definition_name(d) for d in definitions} | {sqlidentity.from_row(r) for r in rows}
+            maximal = {a for a in identities if not any(sqlidentity.refines(b, a) for b in identities)}
+            self.cache[key] = (definitions, rows, maximal)
+        return self.cache[key]
+
+    @staticmethod
+    def definition_name(d):
+        return sqlidentity.decode(d['sql_identity']) if d['sql_identity'] else sqlidentity.parts(d['qualified_name'])
+
+    def select(self, name):
+        definitions, rows, maximal = self.objects(name)
+        candidates = sorted(a for a in maximal if sqlidentity.compatible(a, name))
+        if candidates and all(name == c or sqlidentity.refines(name, c) for c in candidates):
+            candidates = [name]
+        if len(candidates) != 1:
+            return None, candidates, [], []
+        selected = sqlidentity.combine(name, candidates[0])
+        defs = [d for d in definitions if self.definition_name(d) == selected]
+        matched = []
+        for row in rows:
+            identity = sqlidentity.from_row(row)
+            if not sqlidentity.compatible(identity, selected):
+                continue
+            choices = [a for a in maximal if sqlidentity.compatible(identity, a)]
+            confidence = row['confidence']
+            if identity != selected:
+                confidence = ('probable' if choices == [selected] and all(identity) else 'uncertain')
+                if row['confidence'] == 'uncertain':
+                    confidence = 'uncertain'
+            matched.append((row, confidence))
+        return selected, candidates, defs, matched
+
+
 class _Lookup:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
         self._sym: dict[str, sqlite3.Row | None] = {}
+        self.catalog = _Catalog(conn)
+        self.warnings: list[dict] = []
 
     def symbol(self, sid: str | None):
         if not sid:
             return None
         if sid not in self._sym:
             self._sym[sid] = self.conn.execute(
-                "SELECT id, symbol_name, symbol_type, qualified_name, file_path, start_line FROM symbols WHERE id=?",
+                "SELECT id, symbol_name, symbol_type, qualified_name, file_path, start_line, sql_identity FROM symbols WHERE id=?",
                 (sid,)).fetchone()
         return self._sym[sid]
 
     def entry(self, row: sqlite3.Row, depth: int = 0, chain: list[str] | None = None) -> dict:
         s = self.symbol(row["source_id"])
+        source_name = (s['qualified_name'] or s['symbol_name']) if s else row['file_path']
+        path_name = sqlidentity.display(self.catalog.definition_name(s)) if s and s['sql_identity'] else source_name
+        identity = sqlidentity.from_row(row)
+        target = {'symbol': sqlidentity.display(identity), 'relation': 'sql_object'}
+        definitions = [d for d in self.catalog.objects(identity)[0] if self.catalog.definition_name(d) == identity]
+        if len(definitions) == 1:
+            target.update(file_path=definitions[0]['file_path'], line=definitions[0]['start_line'])
         return {
             "source": (s["qualified_name"] or s["symbol_name"]) if s else row["file_path"],
             "source_type": s["symbol_type"] if s else "file",
@@ -98,6 +163,11 @@ class _Lookup:
             "detail": row["detail"],
             "depth": depth,
             "via_chain": chain or [],
+            "object_identity": sqlidentity.display(sqlidentity.from_row(row)),
+            "path": [{"symbol": path_name,
+                      "file_path": row["file_path"], "line": row["line"], "relation": row["access"],
+                      "confidence": row["confidence"], "evidence": row["evidence"]},
+                     target],
         }
 
 
@@ -106,44 +176,46 @@ def _sort(entries: list[dict]) -> list[dict]:
 
 
 def _definitions(conn: sqlite3.Connection, key: str) -> list[dict]:
-    return [
-        {"file_path": r["file_path"], "line": r["start_line"], "type": r["symbol_type"],
-         "qualified_name": r["qualified_name"], "id": r["id"]}
-        for r in conn.execute(
-            f"SELECT id, file_path, start_line, symbol_type, qualified_name FROM symbols "
-            f"WHERE {_SQL_DEFINITION} AND lower(symbol_name)=? AND symbol_type IN ({','.join('?' * len(SQL_OBJECT_KINDS))}) "
-            f"ORDER BY file_path, start_line", (key, *SQL_OBJECT_KINDS))
-    ]
+    _selected, _candidates, definitions, _rows = _Catalog(conn).select(sqlidentity.parts(key))
+    return [_definition(d) for d in definitions]
+
+
+def _definition(r):
+    return {"file_path": r["file_path"], "line": r["start_line"], "type": r["symbol_type"],
+            "qualified_name": r["qualified_name"], "id": r["id"],
+            "object_identity": sqlidentity.display(_Catalog.definition_name(r))}
 
 
 def _expand_indirect(conn: sqlite3.Connection, lk: _Lookup, direct: list[dict], max_depth: int) -> list[dict]:
-    """Accessors of the SQL objects that themselves access the target (procedures executing procedures, views
-    read by code, ...). Each result keeps the effective access of the direct entry it descends from."""
-    out: list[dict] = []
-    seen = {(e["source_id"], e["line"]) for e in direct}
-    queue: deque = deque()
-    for e in direct:
-        if e["source_type"] in ("procedure", "view", "function"):
-            queue.append((e, e["via_chain"] + [lk.symbol(e["source_id"])["symbol_name"]]))
+    out: dict[tuple, dict] = {}
+    seen = {(e["source_id"], e["line"], e["access"]): _CONF[e['confidence']] for e in direct}
+    queue: deque = deque((e, []) for e in direct if e['source_type'] in ('procedure', 'view', 'function'))
     while queue:
         entry, chain = queue.popleft()
-        if len(chain) > max_depth:
+        symbol = lk.symbol(entry['source_id'])
+        name = _Catalog.definition_name(symbol)
+        _selected, _candidates, _definitions_found, bindings = lk.catalog.select(name)
+        viable = [(r, conf) for r, conf in bindings if r['access'] in ('exec', 'read')]
+        if len(chain) >= max_depth:
+            if any((r['source_id'], r['line'], entry['access']) not in seen for r, _ in viable):
+                lk.warnings.append({'code': 'sql_depth_limit', 'object': sqlidentity.display(name), 'limit': max_depth})
             continue
-        key = chain[-1].lower()
-        for r in conn.execute(
-            "SELECT * FROM data_access WHERE target_key=? AND access IN ('exec','read') AND confidence != 'uncertain'",
-            (key,),
-        ):
-            sig = (r["source_id"], r["line"])
-            if sig in seen:
+        next_chain = chain + [symbol['symbol_name']]
+        for r, confidence in viable:
+            sig = (r['source_id'], r['line'], entry['access'])
+            effective = max(entry['confidence'], confidence, key=_CONF.__getitem__)
+            if seen.get(sig, 99) <= _CONF[effective]:
                 continue
-            seen.add(sig)
-            e = lk.entry(r, depth=len(chain), chain=list(chain))
-            e["access"], e["op"] = entry["access"], entry["op"]  # effective access on the original target
-            out.append(e)
-            if e["source_type"] in ("procedure", "view", "function"):
-                queue.append((e, chain + [lk.symbol(e["source_id"])["symbol_name"]]))
-    return out
+            seen[sig] = _CONF[effective]
+            e = lk.entry(r, depth=len(next_chain), chain=next_chain)
+            e['access'], e['op'] = entry['access'], entry['op']
+            e['confidence'] = max(entry['confidence'], confidence, key=_CONF.__getitem__)
+            e['path'][0]['confidence'] = confidence
+            e['path'] = e['path'][:1] + entry['path']
+            out[sig] = e
+            if e['source_type'] in ('procedure', 'view', 'function'):
+                queue.append((e, next_chain))
+    return list(out.values())
 
 
 def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max_depth: int) -> dict:
@@ -169,9 +241,15 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
             elif r["access"] == "exec":
                 execs.append(e)
                 if depth < max_depth:
-                    for d in _definitions(conn, r["target_key"]):
-                        if d["type"] in ("procedure", "function", "view"):
-                            queue.append((d["id"], chain + [r["target_name"]], depth + 1))
+                    _selected, candidates, definitions, _bindings = lk.catalog.select(sqlidentity.from_row(r))
+                    if len(candidates) > 1 or not definitions:
+                        lk.warnings.append({'code': 'unresolved_sql_definition', 'object': e['object_identity'],
+                                            'candidates': [sqlidentity.display(c) for c in candidates]})
+                    for definition in definitions:
+                        if definition['symbol_type'] in ('procedure', 'function', 'view'):
+                            queue.append((definition['id'], chain + [r['target_name']], depth + 1))
+                elif _definitions(conn, sqlidentity.display(sqlidentity.from_row(r))):
+                    lk.warnings.append({'code': 'sql_depth_limit', 'object': e['object_identity'], 'limit': max_depth})
     return {"reads": _sort(reads), "writes": _sort(writes),
             "executes": _sort(execs), "dynamic_sql": _sort(dynamic), "schema_changes": _sort(schema)}
 
@@ -188,47 +266,55 @@ def _program(sym: sqlite3.Row) -> str | None:
     return stem[:-len("Controller")] if stem.endswith("Controller") and stem != "Controller" else stem
 
 
-def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> tuple[list[dict], list[dict]]:
+def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict], call_depth: int = ENTRY_DEPTH) -> tuple[list[dict], list[dict]]:
     """Controller actions that reach the accessing methods through the C# call graph (one entry per program), and
     the methods on those paths that have no confirmed / probable caller at all (API, jobs, Main, or calls the graph
     could not resolve)."""
     queue: deque = deque()
     for e in entries:
         if e["source_type"] in _METHOD_KINDS and e["access"] != "map":
-            queue.append((e["source_id"], e["access"], 0, e["confidence"]))
-    seen: set[tuple[str, str]] = set()
+            queue.append((e["source_id"], e["access"], 0, e["confidence"], e.get("path", [])))
+    seen: dict[tuple[str, str], int] = {}
     progs: dict[str, dict] = {}
     roots: dict[str, dict] = {}
     while queue:
-        sid, access, depth, conf = queue.popleft()
-        if (sid, access) in seen:
+        sid, access, depth, conf, path = queue.popleft()
+        if seen.get((sid, access), 99) <= _CONF[conf]:
             continue
-        seen.add((sid, access))
+        seen[(sid, access)] = _CONF[conf]
         sym = lk.symbol(sid)
         if sym is None:
             continue
+        if not path:
+            path = [{'symbol': sym['qualified_name'], 'file_path': sym['file_path'],
+                     'line': sym['start_line'], 'relation': access, 'confidence': conf}]
         label = _program(sym)
         if label is not None:
             p = progs.setdefault(label, {"program": label, "file_path": sym["file_path"], "access": set(),
-                                         "actions": set(), "confidence": conf, "ids": set()})
+                                         "actions": set(), "confidence": conf, "ids": set(), "paths": []})
             p["access"].add(access)
             p["actions"].add(sym["symbol_name"])
             p["ids"].add(sid)
+            p["paths"].append({"action": sym["symbol_name"], "action_id": sid, "access": access, "confidence": conf, "steps": path})
             if _CONF[conf] < _CONF[p["confidence"]]:
                 p["confidence"] = conf
             continue
-        if depth >= ENTRY_DEPTH:
-            continue
-        parents = [(r["caller_id"], max(conf, r["confidence"], key=_CONF.__getitem__)) for r in conn.execute(
-            "SELECT caller_id, confidence FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
+        parents = [(r["caller_id"], max(conf, r["confidence"], key=_CONF.__getitem__), r["file_path"], r["line"], r["reason"]) for r in conn.execute(
+            "SELECT caller_id, confidence, file_path, line, reason FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
             (sid,))]
         # callers of the interface method this one implements may dispatch here (pipelines: foreach step.Run())
-        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__)) for r in conn.execute(
-            "SELECT im.id FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
+        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__), r["file_path"], r["start_line"], "interface dispatch") for r in conn.execute(
+            "SELECT im.id, im.file_path, im.start_line FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
             "JOIN symbols i ON i.symbol_name = b.name AND i.symbol_type = 'interface' "
             "JOIN symbols im ON im.parent_id = i.id AND im.symbol_name = m.symbol_name WHERE m.id = ?", (sid,))]
-        for parent, pconf in parents:
-            queue.append((parent, access, depth + 1, pconf))
+        if depth >= call_depth and parents:
+            lk.warnings.append({'code': 'call_depth_limit', 'symbol': sym['qualified_name'], 'limit': call_depth})
+            continue
+        for parent, pconf, file_path, line, reason in parents:
+            psym = lk.symbol(parent)
+            step = {'symbol': psym['qualified_name'] if psym else parent, 'file_path': file_path,
+                    'line': line, 'confidence': pconf, 'relation': reason}
+            queue.append((parent, access, depth + 1, pconf, [step] + path))
         if not parents and sym["symbol_type"] in _METHOD_KINDS:
             root = roots.setdefault(sid, {"symbol": sym["qualified_name"] or sym["symbol_name"],
                                           "file_path": sym["file_path"], "line": sym["start_line"], "access": set(), "confidence": conf})
@@ -240,16 +326,30 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict]) -> tup
         pages = sorted({r[0] for r in conn.execute(
             f"SELECT s.file_path FROM calls c JOIN symbols s ON s.id = c.caller_id WHERE s.symbol_type = 'page' "
             f"AND c.callee_id IN ({','.join('?' * len(ids))})", ids)})
+        for trace in p['paths']:
+            action_id = trace.pop('action_id')
+            trace['pages'] = [dict(r) for r in conn.execute(
+                "SELECT DISTINCT c.file_path,c.line,c.confidence FROM calls c JOIN symbols s ON s.id=c.caller_id "
+                "WHERE s.symbol_type='page' AND c.callee_id=? ORDER BY c.file_path,c.line", (action_id,))]
         out.append({**p, "access": sorted(p["access"]), "actions": sorted(p["actions"]), "pages": pages})
     no_caller = [{**r, "access": sorted(r["access"])} for r in sorted(roots.values(), key=lambda r: r["file_path"])]
     return out, no_caller
 
 
-def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX_DEPTH) -> dict:
+def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX_DEPTH, call_depth: int = ENTRY_DEPTH) -> dict:
     key = object_key(object_name)
     lk = _Lookup(conn)
-    defs = _definitions(conn, key)
-    rows = conn.execute("SELECT * FROM data_access WHERE target_key=? ORDER BY file_path, line", (key,)).fetchall()
+    if not 1 <= max_depth <= 32 or not 1 <= call_depth <= 64:
+        raise ValueError('SQL depth must be 1..32 and call depth 1..64')
+    requested = sqlidentity.parts(object_name)
+    selected, candidates, definition_rows, bindings = lk.catalog.select(requested)
+    if len(candidates) > 1:
+        return {'object': object_name, 'key': key, 'found': False, 'ambiguous': True,
+                'candidates': [sqlidentity.display(c) for c in candidates],
+                'suggestions': [sqlidentity.display(c) for c in candidates],
+                'notes': ['Use a qualified candidate. No accessors from different scopes were combined.']}
+    defs = [_definition(d) for d in definition_rows]
+    rows = [r for r, confidence in bindings]
     if not defs and not rows:
         like = [r[0] for r in conn.execute(
             "SELECT DISTINCT target_name FROM data_access WHERE target_key LIKE ? AND target_key != '?' "
@@ -266,16 +366,26 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         kinds = [r["target_kind"] for r in rows]
         kind = max(set(kinds), key=kinds.count) if kinds else "unknown"
 
-    direct = [lk.entry(r) for r in rows]
+    direct = []
+    for row, confidence in bindings:
+        entry = lk.entry(row)
+        entry['confidence'] = max(entry['confidence'], confidence, key=_CONF.__getitem__)
+        if entry['confidence'] != row['confidence']:
+            entry['detail'] += ' Scope inferred from indexed candidates; default database/schema is not runtime-verified.'
+            entry['path'][0]['confidence'] = entry['confidence']
+        direct.append(entry)
     confirmed = [e for e in direct if e["confidence"] != "uncertain"]
     possible = [e for e in direct if e["confidence"] == "uncertain"]
-    indirect = _expand_indirect(conn, lk, [e for e in confirmed if e["access"] in ("write", "read", "exec")], max_depth)
+    indirect = _expand_indirect(conn, lk, [e for e in direct if e["access"] in ("write", "read", "exec", "schema")], max_depth)
+
+    possible.extend(e for e in indirect if e['confidence'] == 'uncertain')
 
     def pick(access: str) -> list[dict]:
-        return _sort([e for e in confirmed + indirect if e["access"] == access])
+        return _sort([e for e in confirmed + indirect if e["access"] == access and e["confidence"] != "uncertain"])
 
     result = {
         "object": object_name, "key": key, "found": True, "kind": kind, "definitions": defs,
+        "object_identity": sqlidentity.display(selected), "ambiguous": False,
         "readers": pick("read"),
         "writers": pick("write"),
         "executed_by": pick("exec"),
@@ -286,7 +396,7 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
         "no_known_caller": [],
         "notes": [],
     }
-    result["programs"], result["no_known_caller"] = _programs(conn, lk, confirmed + indirect)
+    result["programs"], result["no_known_caller"] = _programs(conn, lk, [e for e in confirmed + indirect if e['confidence'] != 'uncertain'], call_depth)
     if kind in ("procedure", "function", "view") and defs:
         result["touches"] = _touches(conn, lk, [d for d in defs if d["type"] == kind], max_depth)
     # dynamic SQL elsewhere whose text names this object
@@ -294,6 +404,10 @@ def data_access(conn: sqlite3.Connection, object_name: str, max_depth: int = MAX
     for r in conn.execute("SELECT * FROM data_access WHERE target_key='?' AND op='dynamic'"):
         if word.search(r["evidence"] or ""):
             result["possible"].append(lk.entry(r))
+    result['coverage'] = {'complete_within_limits': not lk.warnings,
+        'sql_depth': max_depth, 'call_depth': call_depth, 'warnings': lk.warnings,
+        'unresolved_bindings': len(possible), 'scope': 'indexed supported static patterns; not runtime completeness'}
+    result['notes'].extend(f"{w['code']}: {w.get('object', w.get('symbol', ''))}" + (f" (limit {w['limit']})" if 'limit' in w else '') for w in lk.warnings)
     result["notes"].append(
         "Static analysis: dynamic SQL is listed under 'possible' and cannot be resolved. PROGRAMS follows confirmed / "
         f"probable C# calls up to {ENTRY_DEPTH} hops to *Controller methods; use relations for a single method's callers.")

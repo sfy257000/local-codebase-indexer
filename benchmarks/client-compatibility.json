@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "model": "local deterministic mock; no reasoning benchmark",
+  "clients": {
+    "claude": {
+      "version": "2.1.328 (Claude Code)",
+      "returncode": 0,
+      "requests": 2,
+      "tool_advertised": true,
+      "tool_result_received": true,
+      "advertised_tool_count": 28,
+      "passed": true
+    },
+    "codex": {
+      "version": "codex-cli 0.170.0",
+      "returncode": 0,
+      "requests": 4,
+      "tool_advertised": true,
+      "tool_result_received": true,
+      "passed": true,
+      "verified_completed_tool_calls": 3,
+      "verification": "Native completed MCP tool events from the previously approved local run",
+      "advertised_tool_count": 13,
+      "initial_harness_passed": false,
+      "initial_harness_limitation": "The initial harness only inspected mock-model text, missing completed native structured tool events. Pass is derived offline from the captured prior run, not a rerun."
+    }
+  },
+  "passed": true,
+  "codex_rerun": "Not repeated after automatic review rejected outside-sandbox execution due to possible external-service traffic.",
+  "limitations": [
+    "Deterministic local mock model: transport test, not independent model reasoning, billing, or answer-quality measurement.",
+    "The previous Codex execution had failed attempts to reach an unrelated inherited connector; no network-isolation claim. New CLI harness disables inherited MCP servers for an explicitly authorized future run."
+  ]
+}

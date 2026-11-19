@@ -105,7 +105,7 @@ def member_info(node, src: bytes) -> tuple[str, int, int]:
 class _Calls:
     def __init__(self, src: bytes, symbols: list):
         self.src = src
-        spans = [(s.end - s.start, s) for s in symbols if s.type != "namespace"]
+        spans = [(s.end_byte - s.start_byte if s.start_byte >= 0 else s.end - s.start, s) for s in symbols if s.type != "namespace"]
         spans.sort(key=lambda t: (t[0], t[1].start))
         self.spans = [s for _, s in spans]
         self.out: list[CallSite] = []
@@ -162,9 +162,10 @@ class _Calls:
         name = self.text(n)
         return elem_type(raw.get(name) or self._class_member_types(scope).get(name, ""))
 
-    def locate(self, line: int):
+    def locate(self, node):
         for s in self.spans:
-            if s.start <= line <= s.end:
+            contains = (s.start_byte <= node.start_byte and node.end_byte <= s.end_byte) if s.start_byte >= 0 else (s.start <= node.start_point[0] + 1 <= s.end)
+            if contains:
                 return s
         return None
 
@@ -369,7 +370,7 @@ class _Calls:
 
     def _add(self, n, name, argc, kind, rname, rtype, rexpr, is_ctor) -> None:
         line = n.start_point[0] + 1
-        sym = self.locate(line)
+        sym = self.locate(n)
         self.out.append(CallSite(sym.id if sym is not None else None, line, name, argc, kind, rname, rtype, rexpr, is_ctor))
 
 

@@ -36,11 +36,12 @@ dependencies = [
     "tree-sitter-typescript",
     "numpy",
     "pathspec>=0.12.1",
+    "tomli>=2; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
 onnx = ["onnxruntime", "tokenizers"]
-dev = ["pytest", "ruff>=0.9", "mypy>=1.14"]
+dev = ["pytest", "ruff>=0.9", "mypy>=1.14", "jsonschema>=4", "mcp>=1.12,<2"]
 media = ["Pillow>=10"]
 
 [project.scripts]

@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/sfy257000/island-inline-watcher",
+  "commit": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+  "initial_index_ms": 296.021,
+  "initial": {
+    "scanned": 24,
+    "added": 24,
+    "updated": 0,
+    "unchanged": 0,
+    "deleted": 0,
+    "skipped": 0,
+    "failed": 0,
+    "chunks": 267,
+    "symbols": 220,
+    "warnings": []
+  },
+  "status": {
+    "state": "fresh",
+    "server": {
+      "version": "0.9.1",
+      "code_changed_since_start": false
+    },
+    "root": "/tmp/indexer-owner-smoke-w8ounczq/project",
+    "embedder": "hashing-384-v1",
+    "index_version": "11",
+    "index_revision": "eb3f5250dddf42c0881f9b25781c05b0",
+    "index_format_outdated": false,
+    "last_indexed_at": 1795076504,
+    "indexed_files": 24,
+    "symbols": 220,
+    "chunks": 267,
+    "git": {
+      "indexed": {
+        "commit": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+        "branch": "main",
+        "dirty_files": 0
+      },
+      "current": {
+        "commit": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+        "branch": "main",
+        "dirty_files": 0
+      },
+      "head_moved": false
+    },
+    "pending_changes": {
+      "new_files": {
+        "count": 0,
+        "examples": []
+      },
+      "deleted_files": {
+        "count": 0,
+        "examples": []
+      },
+      "possibly_modified_files": {
+        "count": 0,
+        "examples": []
+      },
+      "note": "modified is judged by mtime only; a touched file with identical content is re-checked by md5 on the next update"
+    },
+    "failed_files": [],
+    "consistency": {
+      "ok": true,
+      "problems": []
+    }
+  },
+  "relations": {
+    "symbol": "parse_reply",
+    "definitions": [
+      {
+        "id": "booking_verification.py#function:parse_reply@56:1900",
+        "file_path": "booking_verification.py",
+        "type": "function",
+        "qualified_name": "parse_reply",
+        "start_line": 56,
+        "end_line": 69,
+        "signature": "def parse_reply(raw_message, sender, message_id):",
+        "upstream": {
+          "callers": [],
+          "callers_total": 0,
+          "implementations": [],
+          "inheritors_or_implementers": [],
+          "referenced_by": [],
+          "referenced_by_total": 0
+        },
+        "downstream": {
+          "base_types": [],
+          "uses_types": [],
+          "calls": [],
+          "data_access": []
+        }
+      }
+    ],
+    "sql_candidates": [],
+    "note": "C# method calls are resolved by receiver type (confirmed / probable / candidate); type references and fields remain identifier-name matches; inheritance edges come from the AST"
+  },
+  "context": {
+    "file_path": "booking_verification.py",
+    "total_lines": 188,
+    "ranges": [
+      [
+        46,
+        66
+      ]
+    ],
+    "enclosing_symbols": [
+      {
+        "symbol": "parse_reply",
+        "type": "function",
+        "start_line": 56,
+        "end_line": 69
+      }
+    ],
+    "truncated": false,
+    "omitted_lines": 0,
+    "truncated_lines": [],
+    "context": " 46 |         if len(addresses) != 1 or addresses[0].defects or len(addresses[0].addresses) != 1:\n 47 |             return False\n 48 |         if addresses[0].addresses[0].addr_spec.casefold() != sender.casefold():\n 49 |             return False\n 50 |         replies = message.get_all(\"In-Reply-To\", ())\n 51 |         return len(replies) == 1 and str(replies[0]).strip() == message_id\n 52 |     except (LookupError, TypeError, ValueError):\n 53 |         return False\n 54 | \n 55 | \n 56 | def parse_reply(raw_message, sender, message_id):\n 57 |     \"\"\"Accept only a direct reply with a four-digit first line.\"\"\"\n 58 |     try:\n 59 |         message = BytesParser(policy=policy.default).parsebytes(raw_message)\n 60 |         if not matches_reply(message, sender, message_id):\n 61 |             return None\n 62 |         part = message.get_body(preferencelist=(\"plain\",))\n 63 |         if part is not None:\n 64 |             first_line = next((line.strip() for line in part.get_content().splitlines() if line.strip()), \"\")\n 65 |             if re.fullmatch(rf\"[0-9]{{{CODE_LENGTH}}}\", first_line):\n 66 |                 return first_line"
+  },
+  "changed_impact": {
+    "changed": [
+      {
+        "id": "booking_verification.py#function:parse_reply@56:1900",
+        "symbol": "parse_reply",
+        "type": "function",
+        "file_path": "booking_verification.py",
+        "lines": [
+          [
+            57,
+            57
+          ]
+        ],
+        "snapshot": "current"
+      }
+    ],
+    "unmapped_files": [],
+    "tables": [],
+    "programs": [],
+    "no_known_caller": [
+      {
+        "symbol": "parse_reply",
+        "file_path": "booking_verification.py",
+        "line": 56,
+        "access": [
+          "change"
+        ],
+        "confidence": "confirmed",
+        "snapshot": "current"
+      }
+    ],
+    "coverage_warnings": [],
+    "base": "HEAD",
+    "removed_files": [],
+    "revisions": {
+      "before": "1534a8378e5bd21acb8c9e61d2d84eba2ae2c435",
+      "after": null
+    },
+    "note": "Current lines refer to the working tree; before lines refer to the base revision. Historical analysis excludes external extra roots."
+  },
+  "incremental": {
+    "scanned": 24,
+    "added": 0,
+    "updated": 1,
+    "unchanged": 23,
+    "deleted": 0,
+    "skipped": 0,
+    "failed": 0,
+    "chunks": 267,
+    "symbols": 220,
+    "warnings": []
+  },
+  "restored": {
+    "scanned": 24,
+    "added": 0,
+    "updated": 1,
+    "unchanged": 23,
+    "deleted": 0,
+    "skipped": 0,
+    "failed": 0,
+    "chunks": 267,
+    "symbols": 220,
+    "warnings": []
+  },
+  "passed": true,
+  "limitations": [
+    "Source-only indexing in a disposable copy; application, booking, email and browser code were not executed.",
+    "Python symbols and changed-symbol impact are covered; no claim of C# call resolution, SQL writes or Razor pages on this repository."
+  ]
+}

@@ -15,6 +15,8 @@ from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from itertools import islice
 
+from . import sqlidentity
+
 HOLE = "__hole__"  # stands in for interpolated / unknown parts of a C# string
 
 _PART = r'(?:\[(?:[^\]]|\]\])+\]|"(?:[^"]|"")+"|[#@]?[\w$]+)'
@@ -75,6 +77,8 @@ class Access:
     evidence: str = ""
     detail: str = ""
     source_id: str | None = None  # symbol that contains the access (set by the caller)
+    site_offset: int = -1  # C# execution/declaration byte offset, used only during parsing
+    identity: str = ""  # JSON name parts; preserves delimited dots and explicit USE context
 
 
 def _blank(chars: list[str], start: int, end: int) -> None:
@@ -441,13 +445,14 @@ def extract_sql_accesses(text: str, first_line: int = 1, _dynamic: bool = False)
         if HOLE in key:
             parts, key, kind, conf = ["(dynamic)"], "?", "unknown", "uncertain"
         line = first_line + bisect_right(line_breaks, pos - 1)
-        sig = (key, tuple(parts[:-1]), access, op, line)
+        sig = (key, sqlidentity.contextual(parts, masked, pos), access, op, line)
         if sig in seen:
             return
         seen.add(sig)
         out.append(Access(
             key=key, name=parts[-1], qualifier=".".join(parts[:-1]), kind=kind, access=access, op=op, line=line,
             via=base_via, confidence=conf, evidence=_evidence(text, pos),
+            identity=sqlidentity.encode(sqlidentity.contextual(parts, masked, pos)),
         ))
 
     def window_items(end: int) -> list:

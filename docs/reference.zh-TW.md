@@ -105,12 +105,12 @@ local-codebase-indexer --root <專案> data-access MES_Lot --full
 
 - **向量儲存**：規格的 `sqlite-vss` 需要原生擴充且已停止維護，這裡 `vss_chunks` 改存 float32 BLOB，用 numpy 暴力計算 cosine，不需要額外安裝擴充。
 - **嵌入模型**：預設是內建的 hashing 嵌入（識別字拆詞、雙詞組、中文雙字），快速、可重現，但**不理解同義詞**。要用真正的 transformer，匯出 `all-MiniLM-L6-v2` 或 `bge-small-en-v1.5` 為 ONNX，裝 `onnxruntime`、`tokenizers`，並設 `INDEXER_ONNX_MODEL=<含 model.onnx 與 tokenizer.json 的資料夾>`（目前用平均池化，適合 MiniLM，bge 系列建議用 CLS 池化）。切換嵌入後會自動重建索引。實測（0.4.0）：`all-MiniLM-L6-v2` 讓 benchmark MRR 提高 0.08–0.13，但在真實的 3 萬 chunk C# / 中文註解專案上，換句話說的查詢反而比 hashing 差（MRR 0.29 對 0.48；多語 MiniLM-L12 為 0.41），完整建索引從 2 分鐘變成 35–43 分鐘。因此預設維持 hashing；領域行話用 `.ai_context/synonyms.json` 比通用模型有效。
-- **C# 呼叫關係**以有限度的型別推斷解析（using / namespace、欄位與建構式注入的型別、`Lazy<T>.Value`、區域變數、`foreach (var x in items.Where(..))` 的元素型別、介面對應實作），每條關係都標信心等級：`confirmed`（接收者型別已知）、`probable`（經由介面或唯一候選）、`candidate`（僅名稱相符）。沒有 Roslyn，所以不做依引數型別的多載解析、不處理委派 / lambda / 擴充方法，呼叫鏈只追一層。繼承關係來自 AST，可靠。
+- **C# 呼叫關係**以有限度的型別推斷解析（using / namespace、欄位與建構式注入的型別、`Lazy<T>.Value`、區域變數、`foreach (var x in items.Where(..))` 的元素型別、介面對應實作），每條關係都標信心等級：`confirmed`（接收者型別已知）、`probable`（經由介面或唯一候選）、`candidate`（僅名稱相符）。沒有 Roslyn，所以不做依引數型別的多載解析、不處理委派 / lambda / 擴充方法，鏈式接收者運算式的回傳型別推斷有限；呼叫圖向上追蹤另有深度設定。繼承關係來自 AST，可靠。
 - 額外加了 `symbols.qualified_name`、`chunk_metadata.symbol_id`、`raw_refs`、`chunks_fts` 與 `meta` 表。
 
 ## 資料存取（SQL）
 
-`data-access <資料表或預存程序>` 回答「誰寫入 / 讀取 / 執行 X」。資料來源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含別名解析，排除 CTE、暫存表、系統物件）、C# 的 SQL 字串（字面值、`+`、字串內插、`string.Format`、常數、區域變數、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）經 Dapper、`SqlCommand` 或 EF `FromSql` 送出、搭配 `CommandType.StoredProcedure` 的 SP 名稱、對 `DbSet<T>` 成員的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比對成員名稱，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 對應。呼叫某 SP 的程式視為該 SP 所寫資料表的間接寫入者（最多追 4 層）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 呼叫往上追到 `*Controller` 方法（最多 8 層），（實作方法也會接到它所實作介面方法的呼叫者，涵蓋 `foreach (var step in steps) step.Run()` 這種管線），依 controller 檔案分組，並列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向這些 action 的 Razor 頁面（`.cshtml`），查一張表就知道哪些畫面會動到它。方法讀了某 DbSet 又呼叫 `SaveChanges`、但沒有明確 `Add` / `Remove` 時，可能是在更新追蹤中的實體，列為可能（`uncertain`）寫入者。每筆都有信心等級；**動態 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值組成的 SQL）無法解析，會獨立列為 `uncertain`**，不會混進確定的清單。EF 存取在 context 變數（`using (var db = new X())`、欄位或屬性、`this`）的型別是宣告或繼承該 DbSet 的類別時為 `confirmed`，否則 `probable`。往上追時沒有任何 confirmed / probable 呼叫者的方法列在 NO KNOWN CALLER：可能是 API、排程、`Main` 等入口，或是呼叫圖解不出的呼叫。已知缺口：`FROM a JOIN b ON ..., c` 會漏掉 `c`；把 SP 名稱傳給非資料庫方法時看不到。
+`data-access <資料表或預存程序>` 回答「誰寫入 / 讀取 / 執行 X」。資料來源：T-SQL（INSERT / UPDATE / DELETE / MERGE / TRUNCATE / SELECT INTO / FROM / JOIN / EXEC，含別名解析，排除 CTE、暫存表、系統物件）、C# 的 SQL 字串（字面值、`+`、字串內插、`string.Format`、常數、區域變數、`StringBuilder.Append` / `AppendLine` / `AppendFormat`）經 Dapper、`SqlCommand` 或 EF `FromSql` 送出、搭配 `CommandType.StoredProcedure` 的 SP 名稱、對 `DbSet<T>` 成員的 EF LINQ（`ctx.Orders.Where(..)` / `.Add(..)` / `.Remove(..)`、`from o in ctx.Orders`；只比對成員名稱，所以是 `probable`），以及 EF 的 `ToTable` / `[Table]` 對應。呼叫某 SP 的程式視為該 SP 所寫資料表的間接寫入者（最多追 4 層）。`programs`（USED BY PROGRAMS）沿 confirmed / probable 的 C# 呼叫往上追到 `*Controller` 方法（最多 8 層），（實作方法也會接到它所實作介面方法的呼叫者，涵蓋 `foreach (var step in steps) step.Run()` 這種管線），依 controller 檔案分組，並列出 `Url.Action("Action"[, "Controller"])` 或 AngularJS `ControllerPath + 'Action'`（controller 取自 `$scope.Controller = 'X'`）指向這些 action 的 Razor 頁面（`.cshtml`），查一張表就知道哪些畫面會動到它。方法讀了某 DbSet 又呼叫 `SaveChanges`、但沒有明確 `Add` / `Remove` 時，可能是在更新追蹤中的實體，列為可能（`uncertain`）寫入者。每筆都有信心等級；**動態 SQL（`EXEC(@sql)`、`sp_executesql`、由未知值組成的 SQL）無法解析，會獨立列為 `uncertain`**，不會混進確定的清單。EF 存取在 context 變數（`using (var db = new X())`、欄位或屬性、`this`）的型別是宣告或繼承該 DbSet 的類別時為 `confirmed`，否則 `probable`。往上追時沒有任何 confirmed / probable 呼叫者的方法列在 NO KNOWN CALLER：可能是 API、排程、`Main` 等入口，或是呼叫圖解不出的呼叫。已知缺口：把 SP 名稱傳給非資料庫方法時看不到。
 
 只存在資料庫裡的預存程序，可匯出到 repo 外的資料夾，再寫進 `.ai_context/extra_roots`（一行一個資料夾，絕對路徑或相對於專案根目錄）；這些檔案以絕對路徑索引。
 
@@ -138,6 +138,21 @@ local-codebase-indexer --root <專案> data-access MES_Lot --full
 python -m pytest -q
 ```
 
-## SQL, Unicode, VB6, and schema updates
+## SQL、Unicode、VB6 與 Schema 更新
 
-See [0.9.0 support and upgrade notes](sql-legacy-support.md) for SQL fixes, VB6 confidence limits, separate schema operations, Unicode decoding, and explicit default-directory overrides. The first index update rebuilds format 9.
+[0.9.0 支援與升級說明](sql-legacy-support.md) 包含 SQL 修正、VB6 信心限制、獨立 schema 操作、Unicode 解碼及忽略清單覆寫。目前未發布版本會將舊索引重建為格式 11；詳見 [v1 實作與證據（英文）](v1-readiness.md)。
+
+## 尚未發布：完整物件名稱、證據鏈與報告
+
+SQL 物件保留 server／database／schema／名稱及明確的 `USE` 上下文。短名稱有歧義時回傳 `ambiguous: true`、`found: false` 與完整 `candidates`，不合併為確定結果。無法確定命名範圍的存取列為 uncertain；名稱目前不區分大小寫。`coverage.warnings` 說明深度截斷與缺少 SQL 定義，證據鏈是代表路徑，不是所有可能執行路徑。
+
+```bash
+local-codebase-indexer --root <專案> init --client claude
+local-codebase-indexer --root <專案> init --client codex --no-index
+local-codebase-indexer --root <專案> index --progress
+local-codebase-indexer --root <專案> data-access dbo.Lot --sql-depth 12 --call-depth 16 --json
+local-codebase-indexer --root <專案> search "專案識別字" --mode lexical
+local-codebase-indexer --root <專案> report dbo.Lot --output .ai_context/reports/lot.html
+```
+
+`init` 保留其他專案設定並拒絕覆蓋衝突；客戶端的信任核准仍依原本流程進行。HTML 報告可離線開啟，包含 SVG、原始碼位置、信心標籤與完整 JSON；也支援 `mermaid`／`json` 格式，覆寫既有報告須加 `--force`。MCP 與對應 CLI JSON 提供 `schema_version: 1`、`result_type`，並保留原有 MCP 文字。向量快取預設 128 MiB，設定 `INDEXER_VECTOR_CACHE_MB=0` 可停用；依索引版本失效，適用於長時間執行的程序，不會跨 CLI 程序共用。[API 契約、量測、客戶端證據與限制（英文）](v1-readiness.md)。

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Keep BOM-tagged UTF-16/UTF-32 SQL eligible in doctor, matching indexing/status; add separate maintainer-supplied Python workflow/retrieval acceptance.
+
+- Preserve four-part SQL identities, delimited dots, explicit USE context, EF schema mappings, and quoted C# stored-procedure names. Return qualified candidates for ambiguous short names; keep unresolved scope under possible instead of confirmed.
+- Use AST byte ranges for compact C# source ownership and distinct same-line overload IDs; preserve differently qualified SQL accesses on the same source line.
+- Add representative source-evidence paths, action-specific page locations, bounded SQL/C# depth controls, and visible cutoff/unavailable-definition warnings, including Git impact metadata.
+- Negotiate supported MCP protocol versions; provide structured results/output schemas and matching CLI JSON metadata while retaining legacy text. Add seven checked-in contracts, a full tool manifest, bounded structured defaults with exact truncation/pagination, retryable busy errors, and official-SDK tests.
+- Add project-local init/configuration, stderr indexing progress, and offline escaped HTML/SVG, Mermaid and JSON impact reports with explicit overwrite handling.
+- Add optional lexical search, soft file diversity, and a bounded revision-aware in-process vector cache; bind cursors to retrieval mode/algorithm.
+- Add 100 frozen navigation questions on three pinned public C# projects, baseline/candidate records, real-client transport evidence using a local mock model, and 10k/50k/100k scaling/update/Git-switch measurements. Preserve retrieval losses and limits on interpretation.
+- Extend Linux/Windows CI to Python 3.11, package the new tests/dependencies, check contracts, run public-code/performance smoke evaluations, and test Claude transport automatically. Codex native tool events are recorded from a manual transport run.
+- Synchronize English/Traditional Chinese/Simplified Chinese README and reference additions; correct obsolete JOIN and index-format guidance.
+- Index format 11 rebuilds older parsed data on the first update. Package/Registry versions remain unchanged while these changes are Unreleased.
+
 ## 0.9.1
 
 - Bound dynamic `sp_executesql` analysis to its SQL argument and statement; preserve uncertainty for quoted procedure names and exclude unrelated literals/column names.

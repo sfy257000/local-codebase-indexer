@@ -1,0 +1,95 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "result_type": {
+      "type": "string",
+      "const": "codebase_semantic_search"
+    },
+    "query": {
+      "type": "string"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "file_path",
+          "start_line",
+          "end_line",
+          "snippet",
+          "score",
+          "matched_by"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "matched_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "related_files": {
+      "type": "array"
+    },
+    "truncation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "total",
+          "returned"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "hybrid",
+        "lexical"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "result_type",
+    "query",
+    "results",
+    "related_files"
+  ],
+  "additionalProperties": true
+}

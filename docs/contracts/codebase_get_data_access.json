@@ -1,0 +1,412 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "result_type": {
+      "type": "string",
+      "const": "codebase_get_data_access"
+    },
+    "object": {
+      "type": "string"
+    },
+    "key": {
+      "type": "string"
+    },
+    "found": {
+      "type": "boolean"
+    },
+    "truncation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "total",
+          "returned"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "readers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "writers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "executed_by": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "mapped_by": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schema_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "possible": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "file_path",
+          "line",
+          "access",
+          "confidence"
+        ],
+        "properties": {
+          "file_path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "probable",
+              "uncertain"
+            ]
+          },
+          "object_identity": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "symbol",
+                "relation"
+              ],
+              "properties": {
+                "symbol": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ambiguous": {
+      "type": "boolean"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "complete_within_limits",
+        "warnings"
+      ],
+      "properties": {
+        "complete_within_limits": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "result_type",
+    "object",
+    "key",
+    "found"
+  ],
+  "additionalProperties": true
+}

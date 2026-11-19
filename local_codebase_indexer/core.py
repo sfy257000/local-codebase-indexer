@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from . import db as dbmod
+from . import sqlidentity
 from .callgraph import resolve_calls
 from .embedder import get_embedder, split_identifier
 from .langparse import CLASS_LIKE, parse_file
@@ -127,12 +128,12 @@ class Indexer:
         self.conn.close()
 
     # ------------------------------------------------------------------ public
-    def update(self, force: bool = False) -> IndexStats:
+    def update(self, force: bool = False, progress=None) -> IndexStats:
         with index_lock(self.db_path):
             try:
                 if hasattr(self.embedder, 'assert_unchanged'):
                     self.embedder.assert_unchanged()
-                return self._update(force)
+                return self._update(force, progress)
             except sqlite3.OperationalError as exc:
                 self.conn.rollback()
                 if is_busy(exc):
@@ -142,7 +143,7 @@ class Indexer:
                 self.conn.rollback()
                 raise
 
-    def _update(self, force: bool = False) -> IndexStats:
+    def _update(self, force: bool = False, progress=None) -> IndexStats:
         stats = IndexStats()
         conn = self.conn
         # A crash between batch commits must not leave a partially resolved graph trusted.
@@ -167,6 +168,8 @@ class Indexer:
 
         for sf in iter_files(self.root):
             stats.scanned += 1
+            if progress and (stats.scanned == 1 or stats.scanned % 100 == 0):
+                progress({'phase': 'scan', 'scanned': stats.scanned})
             seen.add(sf.rel_path)
             prev = existing.get(sf.rel_path)
             if prev and not force and prev[0] == sf.mtime_ns:
@@ -216,6 +219,8 @@ class Indexer:
                          [(r[0],) for r in conn.execute("SELECT file_path FROM index_failures").fetchall()
                           if r[0] not in seen])
         if changed or force:
+            if progress:
+                progress({'phase': 'resolve relations', 'scanned': stats.scanned})
             resolve_dependencies(conn)
             resolve_calls(conn)
             resolve_page_actions(conn)
@@ -226,6 +231,8 @@ class Indexer:
         conn.commit()
         stats.chunks = conn.execute("SELECT COUNT(*) FROM chunk_metadata").fetchone()[0]
         stats.symbols = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+        if progress:
+            progress({'phase': 'complete', 'scanned': stats.scanned})
         return stats
 
     # ------------------------------------------------------------------ internals
@@ -279,17 +286,17 @@ class Indexer:
             )
             c.executemany(
                 "INSERT OR REPLACE INTO symbols(id, file_path, symbol_name, symbol_type, parent_id,"
-                " start_line, end_line, signature, qualified_name, type_name, min_args, max_args)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                " start_line, end_line, signature, qualified_name, type_name, min_args, max_args, sql_identity)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(s.id, rel_path, s.name, s.type, s.parent_id, s.start, s.end, s.signature, s.qname,
-                  s.type_name or None, s.min_args, s.max_args)
+                  s.type_name or None, s.min_args, s.max_args, s.sql_identity)
                  for s in parsed.symbols],
             )
             c.executemany(
                 "INSERT INTO data_access(file_path, source_id, line, target_key, target_name, qualifier,"
-                " target_kind, access, op, via, confidence, evidence, detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " target_kind, access, op, via, confidence, evidence, detail, target_identity) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(rel_path, a.source_id, a.line, a.key, a.name, a.qualifier, a.kind, a.access, a.op, a.via,
-                  a.confidence, a.evidence, a.detail) for a in parsed.accesses],
+                  a.confidence, a.evidence, a.detail, a.identity) for a in parsed.accesses],
             )
             c.executemany(
                 "INSERT INTO call_sites(file_path, caller_id, line, name, argc, recv_kind, recv_name, recv_type,"
@@ -465,47 +472,58 @@ def resolve_ef_access(conn: sqlite3.Connection) -> None:
     A method that reads a DbSet and calls ``SaveChanges`` without an explicit Add / Remove on it may update tracked
     entities: that becomes an ``uncertain`` write (listed as possible, never as a confirmed writer)."""
     conn.execute("DELETE FROM data_access WHERE via='ef_linq'")
-    dbsets: dict[str, str] = {}
+    dbsets: dict[str, set[str]] = defaultdict(set)
     contexts: dict[str, set[str]] = defaultdict(set)  # DbSet member -> context classes declaring it
     for name, sig, owner in conn.execute(
             "SELECT s.symbol_name, s.signature, p.symbol_name FROM symbols s LEFT JOIN symbols p ON p.id = s.parent_id "
             "WHERE s.symbol_type='property' AND s.signature LIKE '%DbSet<%'"):
         m = _DBSET.search(sig or "")
         if m:
-            dbsets[name.lower()] = m.group(1).split(".")[-1]
+            dbsets[name.lower()].add(m.group(1).split(".")[-1])
             if owner:
                 contexts[name.lower()].add(owner)
     if not dbsets:
         return
     subclasses = _subclasses(conn)
-    mapped = {r[0].split(".")[-1]: r[1] for r in conn.execute(
-        "SELECT detail, target_name FROM data_access WHERE via='ef_mapping' AND detail != ''")}
+    mapped: dict[str, dict[str, sqlite3.Row]] = defaultdict(dict)
+    for mapping in conn.execute("SELECT * FROM data_access WHERE via='ef_mapping' AND detail != ''"):
+        mapped[mapping['detail'].split('.')[-1]][mapping['target_identity']] = mapping
     ctx_type = _ContextTypes(conn)
     rows = []
     for r in conn.execute("SELECT * FROM data_access WHERE via='ef_raw'").fetchall():
         member = r["target_key"][3:]
-        entity = dbsets.get(member)
-        if entity is None:
+        entities = dbsets.get(member)
+        if not entities:
             continue
-        table = mapped.get(entity, r["target_name"])
-        owners = {c for o in contexts[member] for c in subclasses(o)}
-        # confirmed when the context variable is typed as a class that declares (or inherits) this DbSet
-        conf = "confirmed" if ctx_type(r["source_id"], r["qualifier"]) in owners else "probable"
-        rows.append((r["file_path"], r["source_id"], r["line"], table.lower(), table, "", "table", r["access"],
-                     r["op"], "ef_linq", conf, r["evidence"], entity))
+        options: list[tuple[str, sqlite3.Row | None]] = []
+        for entity in sorted(entities):
+            if mapped[entity]:
+                options.extend((entity, mapping) for mapping in mapped[entity].values())
+            else:
+                options.append((entity, None))
+        for entity, mapping in options:
+            table = mapping['target_name'] if mapping else r['target_name']
+            qualifier = mapping['qualifier'] if mapping else ''
+            identity = mapping['target_identity'] if mapping else sqlidentity.encode((table,))
+            owners = {c for o in contexts[member] for c in subclasses(o)}
+            conf = "confirmed" if ctx_type(r["source_id"], r["qualifier"]) in owners else "probable"
+            if len(options) > 1:
+                conf = 'uncertain'
+            rows.append((r["file_path"], r["source_id"], r["line"], table.lower(), table, qualifier, "table", r["access"],
+                         r["op"], "ef_linq", conf, r["evidence"], entity, identity))
     savers = {r[0]: (r[1], r[2]) for r in conn.execute(
         "SELECT source_id, line, evidence FROM data_access WHERE via='ef_raw' AND target_key='ef:#savechanges' "
         "AND source_id IS NOT NULL")}
-    written = {(r[1], r[3]) for r in rows if r[7] == "write"}
+    written = {(r[1], r[13]) for r in rows if r[7] == "write"}
     for r in list(rows):
-        if r[7] == "read" and r[1] in savers and (r[1], r[3]) not in written:
-            written.add((r[1], r[3]))
+        if r[7] == "read" and r[1] in savers and (r[1], r[13]) not in written:
+            written.add((r[1], r[13]))
             line, evidence = savers[r[1]]
-            rows.append((r[0], r[1], line, r[3], r[4], "", "table", "write", "update", "ef_linq", "uncertain",
-                         f"tracked {r[4]} entities + {evidence}", r[12]))
+            rows.append((r[0], r[1], line, r[3], r[4], r[5], "table", "write", "update", "ef_linq", "uncertain",
+                         f"tracked {r[4]} entities + {evidence}", r[12], r[13]))
     conn.executemany(
         "INSERT INTO data_access(file_path, source_id, line, target_key, target_name, qualifier, target_kind, access,"
-        " op, via, confidence, evidence, detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        " op, via, confidence, evidence, detail, target_identity) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
 
 
 def resolve_dependencies(conn: sqlite3.Connection) -> None:

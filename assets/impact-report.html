@@ -1,0 +1,384 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>SQL impact: Sales_OrderHeader</title><style>body{font:16px system-ui;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#0f172a}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5f9;padding:1rem;border-radius:8px}.graph{overflow-x:auto}svg{width:100%;height:auto;min-width:760px}.notice{background:#fef3c7;padding:1rem}small{overflow-wrap:anywhere}</style>
+<h1>SQL impact: Sales_OrderHeader</h1><p class="notice">Static analysis within configured traversal limits; unsupported patterns may be missing. Confidence labels are evidence classifications, not runtime proof.</p>
+<p>Package 0.9.1 · Index revision 08ac45c055524f95b7bd36f55d18ac1b · Status fresh</p>
+<h2>Evidence graph</h2><div class="graph"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Static source evidence graph" viewBox="0 0 1210 690"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/></marker></defs><path d="M 395 413 L 395 423 L 1204 423 L 1204 545 L 595 545 L 595 555" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 595.0 523.0 L 595.0 555.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 724.0909090909091 413.0 L 665.9090909090909 445.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 195 83 L 195 93 L 1204 93 L 1204 545 L 595 545 L 595 555" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 395.0 193.0 L 395.0 225.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 395.0 303.0 L 395.0 335.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 524.0909090909091 83.0 L 465.9090909090909 115.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 795.0 193.0 L 795.0 225.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 795.0 303.0 L 795.0 335.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><path d="M 924.0909090909091 83.0 L 865.9090909090909 115.0" stroke="#64748b" fill="none" marker-end="url(#arrow)"/><g><title>Shop.Data.OrderRepository.Get Data/OrderRepository.cs:19 confirmed</title><rect x="205" y="335" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="213" y="353" font-size="12">Shop.Data.OrderRepository.Get</text><text x="213" y="386" font-size="10">Data/OrderRepository.cs:19</text><text x="213" y="404" font-size="11">confirmed</text></g><g><title>[dbo].[sales_orderheader] Sql/Sales_OrderHeader.sql:1 static object</title><rect x="405" y="555" width="380" height="78" rx="8" fill="#dbeafe" stroke="#94a3b8"/><text x="413" y="573" font-size="12">[dbo].[sales_orderheader]</text><text x="413" y="606" font-size="10">Sql/Sales_OrderHeader.sql:1</text><text x="413" y="624" font-size="11">static object</text></g><g><title>[dbo].[usp_approveorder] Sql/usp_ApproveOrder.sql:4 confirmed</title><rect x="405" y="445" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="413" y="463" font-size="12">[dbo].[usp_approveorder]</text><text x="413" y="496" font-size="10">Sql/usp_ApproveOrder.sql:4</text><text x="413" y="514" font-size="11">confirmed</text></g><g><title>Shop.Data.OrderRepository.Approve Data/OrderRepository.cs:24 confirmed</title><rect x="605" y="335" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="613" y="353" font-size="12">Shop.Data.OrderRepository.Approve</text><text x="613" y="386" font-size="10">Data/OrderRepository.cs:24</text><text x="613" y="404" font-size="11">confirmed</text></g><g><title>Sql/Sales_OrderHeader.sql Sql/Sales_OrderHeader.sql:1 confirmed</title><rect x="5" y="5" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="13" y="23" font-size="12">Sql/Sales_OrderHeader.sql</text><text x="13" y="56" font-size="10">Sql/Sales_OrderHeader.sql:1</text><text x="13" y="74" font-size="11">confirmed</text></g><g><title>Shop.Controllers.OrdersController.Details Controllers/OrdersController.cs:17 probable</title><rect x="205" y="115" width="380" height="78" rx="8" fill="#fef3c7" stroke="#94a3b8"/><text x="213" y="133" font-size="12">Shop.Controllers.OrdersController.Details</text><text x="213" y="166" font-size="10">Controllers/OrdersController.cs:17</text><text x="213" y="184" font-size="11">probable</text></g><g><title>Shop.Services.OrderService.Get Services/OrderService.cs:17 confirmed</title><rect x="205" y="225" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="213" y="243" font-size="12">Shop.Services.OrderService.Get</text><text x="213" y="276" font-size="10">Services/OrderService.cs:17</text><text x="213" y="294" font-size="11">confirmed</text></g><g><title>Views/Orders/Details.cshtml Views/Orders/Details.cshtml:6 confirmed</title><rect x="405" y="5" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="413" y="23" font-size="12">Views/Orders/Details.cshtml</text><text x="413" y="56" font-size="10">Views/Orders/Details.cshtml:6</text><text x="413" y="74" font-size="11">confirmed</text></g><g><title>Shop.Controllers.OrdersController.Approve Controllers/OrdersController.cs:22 probable</title><rect x="605" y="115" width="380" height="78" rx="8" fill="#fef3c7" stroke="#94a3b8"/><text x="613" y="133" font-size="12">Shop.Controllers.OrdersController.Approve</text><text x="613" y="166" font-size="10">Controllers/OrdersController.cs:22</text><text x="613" y="184" font-size="11">probable</text></g><g><title>Shop.Services.OrderService.Approve Services/OrderService.cs:22 confirmed</title><rect x="605" y="225" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="613" y="243" font-size="12">Shop.Services.OrderService.Approve</text><text x="613" y="276" font-size="10">Services/OrderService.cs:22</text><text x="613" y="294" font-size="11">confirmed</text></g><g><title>Views/Orders/Details.cshtml Views/Orders/Details.cshtml:3 confirmed</title><rect x="805" y="5" width="380" height="78" rx="8" fill="#dcfce7" stroke="#94a3b8"/><text x="813" y="23" font-size="12">Views/Orders/Details.cshtml</text><text x="813" y="56" font-size="10">Views/Orders/Details.cshtml:3</text><text x="813" y="74" font-size="11">confirmed</text></g></svg></div><h2>Access report</h2><pre>table Sales_OrderHeader
+  defined in Sql/Sales_OrderHeader.sql:1
+  WRITTEN BY (2)
+    [confirmed] procedure dbo.usp_ApproveOrder  Sql/usp_ApproveOrder.sql:4  update (sql)
+    [confirmed] method Shop.Data.OrderRepository.Approve  Data/OrderRepository.cs:24  update (csharp_sp) via usp_ApproveOrder
+  READ BY (1)
+    [confirmed] method Shop.Data.OrderRepository.Get  Data/OrderRepository.cs:19  select (csharp_sql)
+  SCHEMA CHANGED BY (1)
+    [confirmed] file Sql/Sales_OrderHeader.sql  Sql/Sales_OrderHeader.sql:1  create_table (sql)
+  USED BY PROGRAMS (1)
+    [probable] Orders  read/write  Controllers/OrdersController.cs  (Approve, Details)
+        pages: Views/Orders/Details.cshtml
+note: Static analysis: dynamic SQL is listed under &#x27;possible&#x27; and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method&#x27;s callers.</pre>
+<details><summary>Mermaid source</summary><pre>flowchart LR
+  n0[&quot;Shop.Data.OrderRepository.Get | Data/OrderRepository.cs:19 | confirmed&quot;]
+  n1[&quot;[dbo].[sales_orderheader] | Sql/Sales_OrderHeader.sql:1 | static object&quot;]
+  n2[&quot;[dbo].[usp_approveorder] | Sql/usp_ApproveOrder.sql:4 | confirmed&quot;]
+  n3[&quot;Shop.Data.OrderRepository.Approve | Data/OrderRepository.cs:24 | confirmed&quot;]
+  n4[&quot;Sql/Sales_OrderHeader.sql | Sql/Sales_OrderHeader.sql:1 | confirmed&quot;]
+  n5[&quot;Shop.Controllers.OrdersController.Details | Controllers/OrdersController.cs:17 | probable&quot;]
+  n6[&quot;Shop.Services.OrderService.Get | Services/OrderService.cs:17 | confirmed&quot;]
+  n7[&quot;Views/Orders/Details.cshtml | Views/Orders/Details.cshtml:6 | confirmed&quot;]
+  n8[&quot;Shop.Controllers.OrdersController.Approve | Controllers/OrdersController.cs:22 | probable&quot;]
+  n9[&quot;Shop.Services.OrderService.Approve | Services/OrderService.cs:22 | confirmed&quot;]
+  n10[&quot;Views/Orders/Details.cshtml | Views/Orders/Details.cshtml:3 | confirmed&quot;]
+  n0 --&gt; n1
+  n2 --&gt; n1
+  n3 --&gt; n2
+  n4 --&gt; n1
+  n5 --&gt; n6
+  n6 --&gt; n0
+  n7 --&gt; n5
+  n8 --&gt; n9
+  n9 --&gt; n3
+  n10 --&gt; n8
+</pre></details>
+<details><summary>Complete structured evidence and index metadata</summary><pre>{
+  &quot;schema_version&quot;: 1,
+  &quot;package_version&quot;: &quot;0.9.1&quot;,
+  &quot;generated_at&quot;: &quot;2026-11-19T08:19:51.580637+00:00&quot;,
+  &quot;index&quot;: {
+    &quot;state&quot;: &quot;fresh&quot;,
+    &quot;server&quot;: {
+      &quot;version&quot;: &quot;0.9.1&quot;,
+      &quot;code_changed_since_start&quot;: false
+    },
+    &quot;root&quot;: &quot;/tmp/indexer-v1-report-demo&quot;,
+    &quot;embedder&quot;: &quot;hashing-384-v1&quot;,
+    &quot;index_version&quot;: &quot;11&quot;,
+    &quot;index_revision&quot;: &quot;08ac45c055524f95b7bd36f55d18ac1b&quot;,
+    &quot;index_format_outdated&quot;: false,
+    &quot;last_indexed_at&quot;: 1795076391,
+    &quot;indexed_files&quot;: 9,
+    &quot;symbols&quot;: 29,
+    &quot;chunks&quot;: 23,
+    &quot;git&quot;: {
+      &quot;indexed&quot;: null,
+      &quot;current&quot;: null,
+      &quot;head_moved&quot;: false
+    },
+    &quot;pending_changes&quot;: {
+      &quot;new_files&quot;: {
+        &quot;count&quot;: 0,
+        &quot;examples&quot;: []
+      },
+      &quot;deleted_files&quot;: {
+        &quot;count&quot;: 0,
+        &quot;examples&quot;: []
+      },
+      &quot;possibly_modified_files&quot;: {
+        &quot;count&quot;: 0,
+        &quot;examples&quot;: []
+      },
+      &quot;note&quot;: &quot;modified is judged by mtime only; a touched file with identical content is re-checked by md5 on the next update&quot;
+    },
+    &quot;failed_files&quot;: [],
+    &quot;consistency&quot;: {
+      &quot;ok&quot;: true,
+      &quot;problems&quot;: []
+    }
+  },
+  &quot;data_access&quot;: {
+    &quot;object&quot;: &quot;Sales_OrderHeader&quot;,
+    &quot;key&quot;: &quot;sales_orderheader&quot;,
+    &quot;found&quot;: true,
+    &quot;kind&quot;: &quot;table&quot;,
+    &quot;definitions&quot;: [
+      {
+        &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+        &quot;line&quot;: 1,
+        &quot;type&quot;: &quot;table&quot;,
+        &quot;qualified_name&quot;: &quot;dbo.Sales_OrderHeader&quot;,
+        &quot;id&quot;: &quot;Sql/Sales_OrderHeader.sql#table:dbo.Sales_OrderHeader@1&quot;,
+        &quot;object_identity&quot;: &quot;[dbo].[sales_orderheader]&quot;
+      }
+    ],
+    &quot;object_identity&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+    &quot;ambiguous&quot;: false,
+    &quot;readers&quot;: [
+      {
+        &quot;source&quot;: &quot;Shop.Data.OrderRepository.Get&quot;,
+        &quot;source_type&quot;: &quot;method&quot;,
+        &quot;source_id&quot;: &quot;Data/OrderRepository.cs#method:Shop.Data.OrderRepository.Get@16:259&quot;,
+        &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+        &quot;line&quot;: 19,
+        &quot;target&quot;: &quot;Sales_OrderHeader&quot;,
+        &quot;op&quot;: &quot;select&quot;,
+        &quot;access&quot;: &quot;read&quot;,
+        &quot;via&quot;: &quot;csharp_sql&quot;,
+        &quot;confidence&quot;: &quot;confirmed&quot;,
+        &quot;evidence&quot;: &quot;SELECT Id, Status FROM dbo.Sales_OrderHeader WHERE Id = @Id&quot;,
+        &quot;detail&quot;: &quot;&quot;,
+        &quot;depth&quot;: 0,
+        &quot;via_chain&quot;: [],
+        &quot;object_identity&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+        &quot;path&quot;: [
+          {
+            &quot;symbol&quot;: &quot;Shop.Data.OrderRepository.Get&quot;,
+            &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+            &quot;line&quot;: 19,
+            &quot;relation&quot;: &quot;read&quot;,
+            &quot;confidence&quot;: &quot;confirmed&quot;,
+            &quot;evidence&quot;: &quot;SELECT Id, Status FROM dbo.Sales_OrderHeader WHERE Id = @Id&quot;
+          },
+          {
+            &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+            &quot;relation&quot;: &quot;sql_object&quot;,
+            &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;line&quot;: 1
+          }
+        ]
+      }
+    ],
+    &quot;writers&quot;: [
+      {
+        &quot;source&quot;: &quot;dbo.usp_ApproveOrder&quot;,
+        &quot;source_type&quot;: &quot;procedure&quot;,
+        &quot;source_id&quot;: &quot;Sql/usp_ApproveOrder.sql#procedure:dbo.usp_ApproveOrder@1&quot;,
+        &quot;file_path&quot;: &quot;Sql/usp_ApproveOrder.sql&quot;,
+        &quot;line&quot;: 4,
+        &quot;target&quot;: &quot;Sales_OrderHeader&quot;,
+        &quot;op&quot;: &quot;update&quot;,
+        &quot;access&quot;: &quot;write&quot;,
+        &quot;via&quot;: &quot;sql&quot;,
+        &quot;confidence&quot;: &quot;confirmed&quot;,
+        &quot;evidence&quot;: &quot;UPDATE dbo.Sales_OrderHeader SET Status = &#x27;Approved&#x27; WHERE Id = @Id;&quot;,
+        &quot;detail&quot;: &quot;&quot;,
+        &quot;depth&quot;: 0,
+        &quot;via_chain&quot;: [],
+        &quot;object_identity&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+        &quot;path&quot;: [
+          {
+            &quot;symbol&quot;: &quot;[dbo].[usp_approveorder]&quot;,
+            &quot;file_path&quot;: &quot;Sql/usp_ApproveOrder.sql&quot;,
+            &quot;line&quot;: 4,
+            &quot;relation&quot;: &quot;write&quot;,
+            &quot;confidence&quot;: &quot;confirmed&quot;,
+            &quot;evidence&quot;: &quot;UPDATE dbo.Sales_OrderHeader SET Status = &#x27;Approved&#x27; WHERE Id = @Id;&quot;
+          },
+          {
+            &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+            &quot;relation&quot;: &quot;sql_object&quot;,
+            &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;line&quot;: 1
+          }
+        ]
+      },
+      {
+        &quot;source&quot;: &quot;Shop.Data.OrderRepository.Approve&quot;,
+        &quot;source_type&quot;: &quot;method&quot;,
+        &quot;source_id&quot;: &quot;Data/OrderRepository.cs#method:Shop.Data.OrderRepository.Approve@22:461&quot;,
+        &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+        &quot;line&quot;: 24,
+        &quot;target&quot;: &quot;usp_ApproveOrder&quot;,
+        &quot;op&quot;: &quot;update&quot;,
+        &quot;access&quot;: &quot;write&quot;,
+        &quot;via&quot;: &quot;csharp_sp&quot;,
+        &quot;confidence&quot;: &quot;confirmed&quot;,
+        &quot;evidence&quot;: &quot;dbo.usp_ApproveOrder&quot;,
+        &quot;detail&quot;: &quot;&quot;,
+        &quot;depth&quot;: 1,
+        &quot;via_chain&quot;: [
+          &quot;usp_ApproveOrder&quot;
+        ],
+        &quot;object_identity&quot;: &quot;[dbo].[usp_approveorder]&quot;,
+        &quot;path&quot;: [
+          {
+            &quot;symbol&quot;: &quot;Shop.Data.OrderRepository.Approve&quot;,
+            &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+            &quot;line&quot;: 24,
+            &quot;relation&quot;: &quot;exec&quot;,
+            &quot;confidence&quot;: &quot;confirmed&quot;,
+            &quot;evidence&quot;: &quot;dbo.usp_ApproveOrder&quot;
+          },
+          {
+            &quot;symbol&quot;: &quot;[dbo].[usp_approveorder]&quot;,
+            &quot;file_path&quot;: &quot;Sql/usp_ApproveOrder.sql&quot;,
+            &quot;line&quot;: 4,
+            &quot;relation&quot;: &quot;write&quot;,
+            &quot;confidence&quot;: &quot;confirmed&quot;,
+            &quot;evidence&quot;: &quot;UPDATE dbo.Sales_OrderHeader SET Status = &#x27;Approved&#x27; WHERE Id = @Id;&quot;
+          },
+          {
+            &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+            &quot;relation&quot;: &quot;sql_object&quot;,
+            &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;line&quot;: 1
+          }
+        ]
+      }
+    ],
+    &quot;executed_by&quot;: [],
+    &quot;mapped_by&quot;: [],
+    &quot;schema_changes&quot;: [
+      {
+        &quot;source&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+        &quot;source_type&quot;: &quot;file&quot;,
+        &quot;source_id&quot;: null,
+        &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+        &quot;line&quot;: 1,
+        &quot;target&quot;: &quot;Sales_OrderHeader&quot;,
+        &quot;op&quot;: &quot;create_table&quot;,
+        &quot;access&quot;: &quot;schema&quot;,
+        &quot;via&quot;: &quot;sql&quot;,
+        &quot;confidence&quot;: &quot;confirmed&quot;,
+        &quot;evidence&quot;: &quot;CREATE TABLE dbo.Sales_OrderHeader (&quot;,
+        &quot;detail&quot;: &quot;&quot;,
+        &quot;depth&quot;: 0,
+        &quot;via_chain&quot;: [],
+        &quot;object_identity&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+        &quot;path&quot;: [
+          {
+            &quot;symbol&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;line&quot;: 1,
+            &quot;relation&quot;: &quot;schema&quot;,
+            &quot;confidence&quot;: &quot;confirmed&quot;,
+            &quot;evidence&quot;: &quot;CREATE TABLE dbo.Sales_OrderHeader (&quot;
+          },
+          {
+            &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+            &quot;relation&quot;: &quot;sql_object&quot;,
+            &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+            &quot;line&quot;: 1
+          }
+        ]
+      }
+    ],
+    &quot;possible&quot;: [],
+    &quot;programs&quot;: [
+      {
+        &quot;program&quot;: &quot;Orders&quot;,
+        &quot;file_path&quot;: &quot;Controllers/OrdersController.cs&quot;,
+        &quot;access&quot;: [
+          &quot;read&quot;,
+          &quot;write&quot;
+        ],
+        &quot;actions&quot;: [
+          &quot;Approve&quot;,
+          &quot;Details&quot;
+        ],
+        &quot;confidence&quot;: &quot;probable&quot;,
+        &quot;paths&quot;: [
+          {
+            &quot;action&quot;: &quot;Details&quot;,
+            &quot;access&quot;: &quot;read&quot;,
+            &quot;confidence&quot;: &quot;probable&quot;,
+            &quot;steps&quot;: [
+              {
+                &quot;symbol&quot;: &quot;Shop.Controllers.OrdersController.Details&quot;,
+                &quot;file_path&quot;: &quot;Controllers/OrdersController.cs&quot;,
+                &quot;line&quot;: 17,
+                &quot;confidence&quot;: &quot;probable&quot;,
+                &quot;relation&quot;: &quot;only implementation of IOrderService.Get&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;Shop.Services.OrderService.Get&quot;,
+                &quot;file_path&quot;: &quot;Services/OrderService.cs&quot;,
+                &quot;line&quot;: 17,
+                &quot;confidence&quot;: &quot;confirmed&quot;,
+                &quot;relation&quot;: &quot;&#x27;_repository&#x27; is declared as OrderRepository&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;Shop.Data.OrderRepository.Get&quot;,
+                &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+                &quot;line&quot;: 19,
+                &quot;relation&quot;: &quot;read&quot;,
+                &quot;confidence&quot;: &quot;confirmed&quot;,
+                &quot;evidence&quot;: &quot;SELECT Id, Status FROM dbo.Sales_OrderHeader WHERE Id = @Id&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+                &quot;relation&quot;: &quot;sql_object&quot;,
+                &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+                &quot;line&quot;: 1
+              }
+            ],
+            &quot;pages&quot;: [
+              {
+                &quot;file_path&quot;: &quot;Views/Orders/Details.cshtml&quot;,
+                &quot;line&quot;: 6,
+                &quot;confidence&quot;: &quot;confirmed&quot;
+              }
+            ]
+          },
+          {
+            &quot;action&quot;: &quot;Approve&quot;,
+            &quot;access&quot;: &quot;write&quot;,
+            &quot;confidence&quot;: &quot;probable&quot;,
+            &quot;steps&quot;: [
+              {
+                &quot;symbol&quot;: &quot;Shop.Controllers.OrdersController.Approve&quot;,
+                &quot;file_path&quot;: &quot;Controllers/OrdersController.cs&quot;,
+                &quot;line&quot;: 22,
+                &quot;confidence&quot;: &quot;probable&quot;,
+                &quot;relation&quot;: &quot;only implementation of IOrderService.Approve&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;Shop.Services.OrderService.Approve&quot;,
+                &quot;file_path&quot;: &quot;Services/OrderService.cs&quot;,
+                &quot;line&quot;: 22,
+                &quot;confidence&quot;: &quot;confirmed&quot;,
+                &quot;relation&quot;: &quot;&#x27;_repository&#x27; is declared as OrderRepository&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;Shop.Data.OrderRepository.Approve&quot;,
+                &quot;file_path&quot;: &quot;Data/OrderRepository.cs&quot;,
+                &quot;line&quot;: 24,
+                &quot;relation&quot;: &quot;exec&quot;,
+                &quot;confidence&quot;: &quot;confirmed&quot;,
+                &quot;evidence&quot;: &quot;dbo.usp_ApproveOrder&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;[dbo].[usp_approveorder]&quot;,
+                &quot;file_path&quot;: &quot;Sql/usp_ApproveOrder.sql&quot;,
+                &quot;line&quot;: 4,
+                &quot;relation&quot;: &quot;write&quot;,
+                &quot;confidence&quot;: &quot;confirmed&quot;,
+                &quot;evidence&quot;: &quot;UPDATE dbo.Sales_OrderHeader SET Status = &#x27;Approved&#x27; WHERE Id = @Id;&quot;
+              },
+              {
+                &quot;symbol&quot;: &quot;[dbo].[sales_orderheader]&quot;,
+                &quot;relation&quot;: &quot;sql_object&quot;,
+                &quot;file_path&quot;: &quot;Sql/Sales_OrderHeader.sql&quot;,
+                &quot;line&quot;: 1
+              }
+            ],
+            &quot;pages&quot;: [
+              {
+                &quot;file_path&quot;: &quot;Views/Orders/Details.cshtml&quot;,
+                &quot;line&quot;: 3,
+                &quot;confidence&quot;: &quot;confirmed&quot;
+              }
+            ]
+          }
+        ],
+        &quot;pages&quot;: [
+          &quot;Views/Orders/Details.cshtml&quot;
+        ]
+      }
+    ],
+    &quot;no_known_caller&quot;: [],
+    &quot;notes&quot;: [
+      &quot;Static analysis: dynamic SQL is listed under &#x27;possible&#x27; and cannot be resolved. PROGRAMS follows confirmed / probable C# calls up to 8 hops to *Controller methods; use relations for a single method&#x27;s callers.&quot;
+    ],
+    &quot;coverage&quot;: {
+      &quot;complete_within_limits&quot;: true,
+      &quot;sql_depth&quot;: 4,
+      &quot;call_depth&quot;: 8,
+      &quot;warnings&quot;: [],
+      &quot;unresolved_bindings&quot;: 0,
+      &quot;scope&quot;: &quot;indexed supported static patterns; not runtime completeness&quot;
+    },
+    &quot;filters&quot;: {
+      &quot;confidence&quot;: null
+    }
+  }
+}</pre></details>
+<small>Evidence SHA256: 7cf23dc290c3757206ee15741418b65c6a7627f4a17ca33d281b9ad65d2e329b. File paths and code excerpts are included; review before sharing.</small></html>

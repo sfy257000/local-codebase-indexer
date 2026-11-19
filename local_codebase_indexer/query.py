@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import fnmatch
+import heapq
 import os
 import re
 import sqlite3
@@ -45,6 +46,8 @@ from .rendering import (
 )
 from .scanner import ScanReport, explain_path, iter_files
 from .synonyms import Expander
+from .textdecode import is_binary_data
+from .vector_cache import VectorCache
 
 RRF_K = 60
 RECHECK_SECONDS = 15  # a long-lived server re-checks the index at most this often
@@ -108,6 +111,7 @@ class CodebaseTools(RelationTools, ContextTools):
     """Facade exposing codebase_semantic_search / get_symbol_relations / get_optimized_context."""
 
     def __init__(self, root: str, auto_refresh: bool = True, embedder=None, db_path: str | None = None):
+        self._vectors = VectorCache()
         self.indexer = Indexer(root, embedder=embedder, db_path=db_path)
         self.root = self.indexer.root
         self.conn: sqlite3.Connection = self.indexer.conn
@@ -116,9 +120,9 @@ class CodebaseTools(RelationTools, ContextTools):
         self.expander = Expander(self.root)
         self._checked_at: float | None = None
 
-    def refresh(self, force: bool = False):
+    def refresh(self, force: bool = False, progress=None):
         self.expander.reload()
-        stats = self.indexer.update(force=force)
+        stats = self.indexer.update(force=force, progress=progress)
         self._checked_at = time.monotonic()
         return stats
 
@@ -136,7 +140,9 @@ class CodebaseTools(RelationTools, ContextTools):
     @_consistent_read(refresh=True)
     def semantic_search(self, query: str, limit: int = 5, related: bool = False,
                         file_pattern: str | None = None, language: str | None = None, offset: int = 0,
-                        cursor: str | None = None, explain: bool = False) -> dict:
+                        cursor: str | None = None, explain: bool = False, mode: str = "hybrid") -> dict:
+        if mode not in ('hybrid', 'lexical'):
+            raise ValueError('mode must be hybrid or lexical')
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a nonempty string")
         if offset < 0:
@@ -146,7 +152,7 @@ class CodebaseTools(RelationTools, ContextTools):
             raise ValueError("unsupported language; choose " + ", ".join(sorted(set(LANGUAGE_BY_EXT.values()))))
         limit = max(1, min(int(limit or 5), 50))
         revision = dbmod.get_meta(self.conn, 'index_revision') or 'unindexed'
-        key = search_key(query, file_pattern, language, self.expander.version, self.embedder.name)
+        key = search_key(query, file_pattern, language, self.expander.version, self.embedder.name, mode)
         if cursor is not None:
             if offset:
                 raise ValueError('Use cursor or offset, not both.')
@@ -164,8 +170,8 @@ class CodebaseTools(RelationTools, ContextTools):
         scope_sql = " AND rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
         chunk_scope = " AND c.rowid IN (SELECT rowid FROM search_scope)" if scope is not None else ""
         # Rank independently of page size/offset; changing candidate pools changes RRF scores.
-        mined = self._mined_expansion(query)
-        extra = list(dict.fromkeys(self.expander.expand(query) + mined))
+        mined = self._mined_expansion(query) if mode == 'hybrid' else []
+        extra = list(dict.fromkeys(self.expander.expand(query) + mined)) if mode == 'hybrid' else []
         vector_extra = list(dict.fromkeys(self.expander.expand(query, for_embedding=True) + mined))
         terms = _query_terms(query)
         for t in _query_terms(" ".join(extra)):
@@ -229,10 +235,8 @@ class CodebaseTools(RelationTools, ContextTools):
             ranks_override["symbol"] = tie_rank
 
         # vector layer: cosine similarity over local embeddings
-        rows = self.conn.execute("SELECT rowid, chunk_embedding FROM vss_chunks WHERE 1=1" + scope_sql + " ORDER BY rowid").fetchall()
-        if rows:
-            ids = np.fromiter((r[0] for r in rows), dtype=np.int64, count=len(rows))
-            mat = np.frombuffer(b"".join(r[1] for r in rows), dtype=np.float32).reshape(len(rows), -1)
+        ids, mat = self._vectors.get(self.conn, scope) if mode == 'hybrid' else (np.empty(0), np.empty((0,0)))
+        if len(ids):
             qtext = query + " " + " ".join(vector_extra) if vector_extra else query
             qv = (self.embedder.embed_query(qtext) if hasattr(self.embedder, "embed_query")
                   else self.embedder.embed([qtext])[0])
@@ -266,8 +270,26 @@ class CodebaseTools(RelationTools, ContextTools):
                 exact.sort(key=lambda r: -hits[r])  # stable: fused order within equal hits
             top_ids = exact + [r for r in top_ids if r not in exact_ids]
 
+        # A soft diversity penalty preserves strongly relevant neighboring chunks.
+        # Hard per-file caps lose helpers in projects implemented in one large file.
+        if not exact_ids:
+            paths = dict(self.conn.execute('SELECT rowid,file_path FROM chunk_metadata'))
+            by_file: dict[str, list[int]] = defaultdict(list)
+            for rid in top_ids:
+                by_file[paths[rid]].append(rid)
+            heap = [(-fused[items[0]], items[0], path, 0) for path, items in by_file.items()]
+            heapq.heapify(heap)
+            diverse: list[int] = []
+            while heap:
+                _priority, rid, path, position = heapq.heappop(heap)
+                diverse.append(rid)
+                position += 1
+                if position < len(by_file[path]):
+                    next_id = by_file[path][position]
+                    heapq.heappush(heap, (-fused[next_id] / (1 + 0.05 * position), next_id, path, position))
+            top_ids = diverse
         results, seen_spans = [], set()
-        routed, bare = self._route_data_access(query)
+        routed, bare = self._route_data_access(query) if mode == 'hybrid' else ([], False)
         routed_hits = []
         allowed_paths = {r[0] for r in self.conn.execute("SELECT file_path FROM files WHERE language=?", (language,))} if language else None
         for acc in routed:
@@ -354,7 +376,7 @@ class CodebaseTools(RelationTools, ContextTools):
             suggestions = difflib.get_close_matches(query, symbol_names, n=5, cutoff=0.45)
             hints = ["Run doctor --path <file> to explain missing files.",
                      "Try an identifier or fewer words; remove file/language filters to widen the search."]
-        return {"query": query, "results": results,
+        return {"query": query, "mode": mode, "results": results,
                 "pagination": {"offset": offset, "limit": limit, "has_more": has_more,
                                "next_offset": offset + limit if has_more else None,
                                "next_cursor": encode_cursor(offset + limit, revision, key) if has_more else None,
@@ -412,8 +434,8 @@ class CodebaseTools(RelationTools, ContextTools):
         for ident in re.findall(r"[A-Za-z_][\w$]*(?:\.[\w$]+){0,3}", query):
             key = dataflow.object_key(ident)
             looks_like_object = bool(re.search(r"[_.\d]", ident) or (re.search(r"[a-z]", ident) and re.search(r"[A-Z]", ident[1:])))
-            if len(key) >= 3 and key in keys and (looks_like_object or hinted) and key not in found:
-                found.append(key)
+            if len(key) >= 3 and key in keys and (looks_like_object or hinted) and ident not in found:
+                found.append(ident)
         out: list[dict] = []
         seen = set()
         for key in found[:2]:
@@ -452,12 +474,12 @@ class CodebaseTools(RelationTools, ContextTools):
 
     @_consistent_read(refresh=True)
     def data_access(self, object_name: str, limit: int | None = None, offset: int = 0,
-                    confidence: str | None = None) -> dict:
+                    confidence: str | None = None, sql_depth: int = 4, call_depth: int = 8) -> dict:
         if offset < 0 or (limit is not None and limit < 1):
             raise ValueError("limit must be positive and offset nonnegative")
         if confidence is not None and confidence not in ('confirmed', 'probable', 'uncertain'):
             raise ValueError("confidence must be confirmed, probable or uncertain")
-        res = dataflow.data_access(self.conn, object_name)
+        res = dataflow.data_access(self.conn, object_name, sql_depth, call_depth)
         if not res['found']:
             return res
         sections = {}
@@ -484,7 +506,7 @@ class CodebaseTools(RelationTools, ContextTools):
         for sf in iter_files(self.root, report=report):
             try:
                 with open(sf.abs_path, 'rb') as f:
-                    if b'\x00' in f.read(8192):
+                    if is_binary_data(f.read(8192)):
                         binary += 1
                         report.record(sf.rel_path, 'binary')
             except OSError:

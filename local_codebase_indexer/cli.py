@@ -16,7 +16,12 @@ def _tools(root: str):
     return CodebaseTools(root)
 
 
-def _emit(data, text: str, as_json: bool) -> None:
+def _emit(data, text: str, as_json: bool, result_type: str | None = None) -> None:
+    if as_json and isinstance(data, dict):
+        data = {'schema_version': 1, **data}
+    if as_json and result_type:
+        from .contracts import result
+        data = result(result_type, data)
     print(json.dumps(data, ensure_ascii=False, indent=2) if as_json else text)
 
 
@@ -44,8 +49,21 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("demo", help="trace a bundled SQL Server / C# / Razor sample without a database")
     s.add_argument("--output", help="keep the sample in a new or empty directory")
 
+    s = sub.add_parser("init", help="configure a project-local MCP client and build its first index")
+    s.add_argument('--client', choices=['claude', 'codex', 'generic'], default='generic')
+    s.add_argument('--no-index', action='store_true', help='only prepare client configuration')
+
+    s = sub.add_parser('report', help='export a shareable offline SQL impact report')
+    s.add_argument('object')
+    s.add_argument('--format', choices=['html', 'mermaid', 'json'], default='html')
+    s.add_argument('--output', required=True)
+    s.add_argument('--force', action='store_true', help='explicitly replace an existing report')
+    s.add_argument('--sql-depth', type=_positive, default=4)
+    s.add_argument('--call-depth', type=_positive, default=8)
+
     s = sub.add_parser("index", help="build / incrementally refresh the index")
     s.add_argument("--force", action="store_true", help="re-index every file")
+    s.add_argument('--progress', action='store_true', help='show indexing phases on stderr')
 
     s = sub.add_parser("search", aliases=["codebase_semantic_search"], help="hybrid semantic search")
     s.add_argument("query", nargs="?")
@@ -57,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--file", dest="file_pattern", help="file glob, e.g. '*Repository*.cs'")
     s.add_argument("--language", help="csharp, python, javascript, typescript, tsx or text")
     s.add_argument("--related", action="store_true", help="also list dependency-graph neighbours of the top hits")
+    s.add_argument("--mode", choices=["hybrid", "lexical"], default="hybrid", help="lexical: keyword/symbol search without vectors or SQL routing")
 
     s = sub.add_parser("relations", aliases=["codebase_get_symbol_relations"], help="symbol dependency graph")
     s.add_argument("symbol", nargs="?")
@@ -79,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=_positive, help="page size per section")
     s.add_argument("--offset", type=_nonnegative, default=0)
     s.add_argument("--confidence", choices=["confirmed", "probable", "uncertain"])
+    s.add_argument('--sql-depth', type=_positive, default=4)
+    s.add_argument('--call-depth', type=_positive, default=8)
 
     s = sub.add_parser("impact", aliases=["codebase_impact_analysis"],
                        help="symbols, tables, programs and pages touched by a git diff")
@@ -147,9 +168,38 @@ def main(argv: list[str] | None = None) -> int:
             res = run_demo(args.output)
             _emit(res, render_demo(res), args.json)
             return 0 if res['passed'] else 3
+        def progress(event):
+            print(f"[indexer] {event['phase']}: {event.get('scanned', 0)} files scanned", file=sys.stderr)
+
+        if args.cmd == 'init':
+            from .setup_project import configure
+            res = configure(root, args.client)
+            if not args.no_index:
+                t = _tools(root)
+                st = t.refresh(progress=progress).as_dict()
+                res['index'] = st
+                res['coverage'] = t.doctor()
+                res['passed'] = bool(st['scanned']) and not st['failed']
+            else:
+                res['passed'] = True
+            _emit(res, 'Project configured for ' + args.client + '\n' + json.dumps(res, ensure_ascii=False, indent=2), args.json)
+            return 0 if res['passed'] else 3
         t = _tools(root)
+        if args.cmd == 'report':
+            from pathlib import Path
+
+            from .reports import render_report
+            from .setup_project import atomic_write
+            res = t.data_access(args.object, sql_depth=args.sql_depth, call_depth=args.call_depth)
+            status = t.index_status()
+            destination = Path(args.output).resolve() if not Path(args.output).is_symlink() else Path(args.output)
+            atomic_write(destination, render_report(res, status, args.format), overwrite=args.force)
+            summary = {'output': str(destination), 'format': args.format, 'found': res['found'],
+                       'ambiguous': res.get('ambiguous', False), 'coverage': res.get('coverage')}
+            _emit(summary, 'Report written: ' + str(destination), args.json)
+            return 0 if res['found'] and not res.get('ambiguous') else 3
         if args.cmd == "index":
-            st = t.refresh(force=args.force).as_dict()
+            st = t.refresh(force=args.force, progress=progress if args.progress else None).as_dict()
             text = (f'indexed {st["scanned"]} files: +{st["added"]} ~{st["updated"]} ={st["unchanged"]} '
                     f'-{st["deleted"]} (skipped {st["skipped"]}, failed {st["failed"]}); {st["symbols"]} symbols, {st["chunks"]} chunks')
             if st["warnings"]:
@@ -165,35 +215,35 @@ def main(argv: list[str] | None = None) -> int:
             if not q:
                 print("error: a query is required", file=sys.stderr)
                 return 2
-            res = t.semantic_search(q, args.limit, args.related, args.file_pattern, args.language, args.offset, cursor=args.cursor, explain=args.explain)
-            _emit(res, render_search(res), args.json)
+            res = t.semantic_search(q, args.limit, args.related, args.file_pattern, args.language, args.offset, cursor=args.cursor, explain=args.explain, mode=args.mode)
+            _emit(res, render_search(res), args.json, "codebase_semantic_search")
         elif args.cmd in ("relations", "codebase_get_symbol_relations"):
             sym = args.symbol_opt or args.symbol
             if not sym:
                 print("error: a symbol name is required", file=sys.stderr)
                 return 2
             res = t.symbol_relations(sym, args.direction)
-            _emit(res, render_relations(res), args.json)
+            _emit(res, render_relations(res), args.json, "codebase_get_symbol_relations")
         elif args.cmd in ("context", "slice", "codebase_get_optimized_context"):
             f = args.file_opt or args.file
             if not f:
                 print("error: a file path is required", file=sys.stderr)
                 return 2
             res = t.optimized_context(f, args.lines, args.padding)
-            _emit(res, render_context(res), args.json)
+            _emit(res, render_context(res), args.json, "codebase_get_optimized_context")
         elif args.cmd in ("data-access", "dataflow", "codebase_get_data_access"):
             name = args.object_opt or args.object
             if not name:
                 print("error: an object name is required", file=sys.stderr)
                 return 2
-            res = t.data_access(name, args.limit, args.offset, args.confidence)
-            _emit(res, render_data_access(res, args.full), args.json)
+            res = t.data_access(name, args.limit, args.offset, args.confidence, args.sql_depth, args.call_depth)
+            _emit(res, render_data_access(res, args.full), args.json, "codebase_get_data_access")
         elif args.cmd in ("impact", "codebase_impact_analysis"):
             res = t.impact(args.base)
-            _emit(res, render_impact(res, args.full), args.json)
+            _emit(res, render_impact(res, args.full), args.json, "codebase_impact_analysis")
         elif args.cmd in ("status", "codebase_index_status"):
             res = t.index_status()
-            _emit(res, render_status(res), args.json)
+            _emit(res, render_status(res), args.json, "codebase_index_status")
             return 0 if res["state"] in ("fresh", "stale") else 3
         elif args.cmd == "evaluate":
             from .evaluation import evaluate, render_evaluation, save_report
@@ -215,10 +265,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if res['passed'] else 3
         elif args.cmd == "doctor":
             res = t.doctor(args.path)
-            _emit(res, render_doctor(res), args.json)
+            _emit(res, render_doctor(res), args.json, "codebase_index_doctor")
         elif args.cmd == "stats":
             st = t.stats()
             _emit(st, "\n".join(f"{k}: {v}" for k, v in st.items()), args.json)
+    except KeyboardInterrupt:
+        print("Interrupted. A later index update will recover safely.", file=sys.stderr)
+        return 130
     except IndexBusyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 4
