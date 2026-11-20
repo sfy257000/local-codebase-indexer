@@ -8,6 +8,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from local_codebase_indexer.locking import IndexBusyError  # noqa: E402
 from local_codebase_indexer.mcp_server import handle  # noqa: E402
 from local_codebase_indexer.query import CodebaseTools  # noqa: E402
 
@@ -394,6 +395,51 @@ def test_mcp_serve_reads_utf8_even_when_locale_is_cp950(project):
                        input=(q + "\n").encode("utf-8"), capture_output=True, env=env, cwd=ROOT, timeout=60)
     out = json.loads(r.stdout.decode("utf-8"))
     assert "result" in out and "error" not in out, r.stderr.decode("utf-8", "replace")
+
+
+def test_mcp_opens_the_index_on_the_first_tool_call(project):
+    _, t = project
+    opened = []
+
+    def factory():
+        opened.append(1)
+        return t
+    for i, method in enumerate(("initialize", "ping", "tools/list")):
+        assert "result" in handle(factory, {"jsonrpc": "2.0", "id": i, "method": method, "params": {}})
+    assert opened == []
+    call = {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "codebase_index_status", "arguments": {}}}
+    assert not handle(factory, call)["result"]["isError"]
+    assert opened == [1]
+
+
+def test_mcp_reports_an_index_that_cannot_be_opened_and_keeps_serving(project):
+    _, t = project
+    attempts = []
+
+    def factory():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise IndexBusyError("locked")
+        return t
+    call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "codebase_index_status", "arguments": {}}}
+    first = handle(factory, call)["result"]
+    assert first["isError"] and first["structuredContent"]["error"]["code"] == "index_busy"
+    assert not handle(factory, call)["result"]["isError"]
+
+
+def test_mcp_serve_answers_initialize_before_creating_the_index(tmp_path):
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}]
+    run = lambda m: subprocess.run(  # noqa: E731
+        [sys.executable, "-m", "local_codebase_indexer", "--root", str(tmp_path), "serve"],
+        input="".join(json.dumps(x) + "\n" for x in m).encode("utf-8"), capture_output=True, cwd=ROOT, timeout=60)
+    r = run(msgs)
+    assert [json.loads(line)["id"] for line in r.stdout.decode("utf-8").splitlines()] == [1, 2]
+    assert not (tmp_path / ".ai_context" / "indexer.db").exists()
+    run(msgs + [{"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                 "params": {"name": "codebase_index_status", "arguments": {}}}])
+    assert (tmp_path / ".ai_context" / "indexer.db").exists()
 
 
 def test_cli_piped_output_is_utf8_even_when_locale_is_cp950(project):

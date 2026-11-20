@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 — 2026-11-20
+
+- The MCP server answers `initialize`, `ping` and `tools/list` without opening the index; the first `tools/call` opens it. Opening can take longer than a client's connection timeout when an upgrade adds indexes to a large existing database on a cold cache (Claude Code gives up after 30 s). A failure to open the index is reported as a tool error and the next call retries.
+- A missing project root still fails at startup.
+
 ## 1.0.3 — 2026-11-20
 
 - Faster incremental updates. Resolving EF context types looked up method text and qualified names without an index, once per EF access in the whole project, on every update with changes. New `idx_chunk_symbol` and `idx_symbols_qualified` indexes make those lookups direct. File dependencies now read `raw_refs` with a table scan instead of an index plus a table lookup per row. On a 3.4k-file project, an update of 28 changed files went from 73 s to 23 s (EF resolution 49 s to 0.4 s, dependencies 6.9 s to 2.1 s); the dependency rows are identical.
