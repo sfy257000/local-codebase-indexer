@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
+from collections.abc import Callable
 
 from . import __version__
 from .contracts import compact, output_schema, result
@@ -193,7 +195,8 @@ def _validate(value, schema: dict, path: str = 'arguments') -> None:
             _validate(item, schema.get('items', {}), f"{path}[{i}]")
 
 
-def handle(tools: CodebaseTools, msg) -> dict | None:
+def handle(tools: CodebaseTools | Callable[[], CodebaseTools], msg) -> dict | None:
+    """``tools`` may be a factory: it is called on the first tools/call, so initialize never waits for the index."""
     mid = msg.get('id') if isinstance(msg, dict) else None
     if not isinstance(mid, (str, int, type(None))) or isinstance(mid, bool):
         mid = None
@@ -231,7 +234,7 @@ def handle(tools: CodebaseTools, msg) -> dict | None:
     try:
         args = params.get('arguments', {})
         _validate(args, spec['inputSchema'])
-        data, text = invoke_tool(tools, name, args)
+        data, text = invoke_tool(tools() if callable(tools) else tools, name, args)
         return ok({'content': [{'type': 'text', 'text': text}], 'structuredContent': data, 'isError': False})
     except IndexBusyError as exc:
         return ok({'content': [{'type': 'text', 'text': f'Index busy: {exc}. Retry after the current update.'}],
@@ -245,7 +248,16 @@ def handle(tools: CodebaseTools, msg) -> dict | None:
 
 
 def serve(root: str) -> int:
-    tools = CodebaseTools(root)
+    if not os.path.isdir(root):
+        raise ValueError(f"project root is not an existing directory: {os.path.abspath(root)}")
+    opened: list[CodebaseTools] = []
+
+    def tools() -> CodebaseTools:
+        # Opening may add indexes to an existing database (slow on a cold cache); clients time out on initialize.
+        if not opened:
+            opened.append(CodebaseTools(root))
+        return opened[0]
+
     try:
         for raw in sys.stdin:
             if not raw.strip():
@@ -260,5 +272,6 @@ def serve(root: str) -> int:
                 sys.stdout.write(json.dumps(resp, ensure_ascii=False) + '\n')
                 sys.stdout.flush()
     finally:
-        tools.indexer.close()
+        if opened:
+            opened[0].indexer.close()
     return 0
