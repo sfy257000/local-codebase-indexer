@@ -557,7 +557,7 @@ class CodebaseTools(RelationTools, ContextTools):
         meta = lambda k: dbmod.get_meta(conn, k)  # noqa: E731
         indexed = {r["file_path"]: r["last_modified"] for r in conn.execute("SELECT file_path, last_modified FROM files")}
 
-        on_disk = {sf.rel_path: sf.mtime_ns for sf in iter_files(self.root)}
+        on_disk = {sf.rel_path: sf.mtime_ns for sf in iter_files(self.root, known=indexed)}
         new = sorted(set(on_disk) - set(indexed))
         gone = sorted(set(indexed) - set(on_disk))
         touched = sorted(p for p in set(on_disk) & set(indexed) if on_disk[p] != indexed[p])

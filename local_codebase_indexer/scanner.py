@@ -108,19 +108,24 @@ def extra_roots(root: str) -> list[str]:
     return out
 
 
-def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES, report: ScanReport | None = None) -> Iterator[ScannedFile]:
+def iter_files(root: str, max_bytes: int = MAX_FILE_BYTES, report: ScanReport | None = None,
+               known: dict[str, int] | None = None) -> Iterator[ScannedFile]:
+    """Eligible files under ``root`` and the extra roots. ``known`` maps indexed paths to their indexed mtime_ns;
+    an unchanged indexed file was already found to be text, so it is not opened again to check for binary data."""
     root = os.path.abspath(root)
     if not os.path.isdir(root):
         raise ValueError(f"project root is not an existing directory: {root}")
     spec = pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE)
     override = (root, pathspec.GitIgnoreSpec.from_lines(_read_lines(os.path.join(root, PROJECT_IGNORE_FILE))))
-    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes, report, override)
+    yield from _walk(root, [(root, spec)], lambda p: os.path.relpath(p, root).replace(os.sep, "/"), max_bytes, report,
+                     override, known)
     for extra in extra_roots(root):
         yield from _walk(extra, [(extra, pathspec.GitIgnoreSpec.from_lines(DEFAULT_IGNORE))],
-                         lambda p: p.replace(os.sep, "/"), max_bytes, report)
+                         lambda p: p.replace(os.sep, "/"), max_bytes, report, known=known)
 
 
-def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None = None, override=None) -> Iterator[ScannedFile]:
+def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None = None, override=None,
+          known: dict[str, int] | None = None) -> Iterator[ScannedFile]:
     def record(path, reason):
         if report is not None:
             report.record(rel(path), reason)
@@ -171,17 +176,19 @@ def _walk(top: str, specs: list, rel, max_bytes: int, report: ScanReport | None 
                 if st.st_size > max_bytes:
                     record(e.path, "too_large")
                     continue
-                try:
-                    with open(e.path, 'rb') as stream:
-                        binary = is_binary_data(stream.read(8192))
-                except OSError:
-                    binary = False  # Let indexing record the read failure and retry it.
-                if binary:
-                    record(e.path, 'binary')
-                    continue
+                rel_path = rel(e.path)
+                if known is None or known.get(rel_path) != st.st_mtime_ns:
+                    try:
+                        with open(e.path, 'rb') as stream:
+                            binary = is_binary_data(stream.read(8192))
+                    except OSError:
+                        binary = False  # Let indexing record the read failure and retry it.
+                    if binary:
+                        record(e.path, 'binary')
+                        continue
                 record(e.path, "eligible")
                 yield ScannedFile(
-                    rel_path=rel(e.path),
+                    rel_path=rel_path,
                     abs_path=e.path,
                     mtime_ns=st.st_mtime_ns,
                     size=st.st_size,
