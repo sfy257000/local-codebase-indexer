@@ -445,6 +445,23 @@ def test_programs_follow_interface_implemented_by_an_abstract_base(tmp_path):
         res = t.data_access("MES_Deep")
         assert [(p["program"], p["access"], p["actions"]) for p in res["programs"]] == [("WK0002", ["write"], ["Save"])]
         assert res["no_known_caller"] == []
+        # WriteLot and Other both implement IStep.Process: which one runs is decided at runtime
+        assert res["programs"][0]["confidence"] == "uncertain"
+        steps = [s["relation"] for s in res["programs"][0]["paths"][0]["steps"]]
+        assert "interface dispatch, one of 2 implementations" in steps
+        assert t.data_access("MES_Deep", confidence="probable")["programs"] == []
+    finally:
+        t.indexer.close()
+
+
+def test_dispatch_to_the_only_implementation_stays_probable(tmp_path):
+    for rel, content in DEEP_FILES.items():
+        text = content.replace("public class Other : IStep { public void Process(int id) { } }\n", "")
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        progs = t.data_access("MES_Deep")["programs"]
+        assert [(p["program"], p["confidence"]) for p in progs] == [("WK0002", "probable")]
     finally:
         t.indexer.close()
 

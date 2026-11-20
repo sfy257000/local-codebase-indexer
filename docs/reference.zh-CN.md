@@ -139,3 +139,9 @@ local-codebase-indexer --root <项目> report dbo.Lot --output .ai_context/repor
 ```
 
 `init` 保留其他项目设置并拒绝覆盖冲突；客户端的信任批准仍按原流程进行。HTML 报告可离线打开，包含 SVG、源代码位置、置信度标签与完整 JSON；也支持 `mermaid`／`json` 格式，覆盖已有报告须加 `--force`。MCP 与对应 CLI JSON 提供 `schema_version: 1`、`result_type`，并保留原有 MCP 文本。向量缓存默认 128 MiB，设置 `INDEXER_VECTOR_CACHE_MB=0` 可停用；随索引版本失效，适用于长期运行的进程，不会跨 CLI 进程共享。[API 契约、测量、客户端证据及限制（英文）](v1-readiness.md)。
+
+## 1.1.0：中文排序、分派置信度、加速影响分析
+
+- 混合搜索按查询中非 CJK 字符的比例调整符号名称层与向量层的权重。中文词不会出现在标识符中，hashing 的中文双字向量噪声较大，因此纯中文查询改以关键词层（含同义词扩展）排序；英文查询不变，中英混合按比例调整。`--explain` 会显示各层贡献。
+- 数据访问的 `programs` 与影响分析中，只能经由“有多个实现的接口或基类方法”到达的路径标为 `uncertain`（relation 为 `interface dispatch, one of N implementations`），因为运行时选择哪个实现无法得知；只有一个实现时保持 `probable`。查询数据访问时使用 `--confidence probable` 可排除共享管线带出的程序。抽象声明不计为实现。
+- 影响分析的历史快照改为从当前索引的副本开始，并应用项目的 `.ai_context/ignore`；只有内容不同的文件会重新解析。首次运行的主要成本是把快照解压到磁盘，之后会复用缓存。

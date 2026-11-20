@@ -284,6 +284,22 @@ def test_vector_rowid_scan_reads_the_index(project):
     assert plan == ["SCAN vss_chunks USING COVERING INDEX idx_vss_rowid"]
 
 
+def test_cjk_share_scales_symbol_and_vector_layers(tmp_path):
+    from local_codebase_indexer.query import _cjk_share
+    assert _cjk_share("lot split") == 0.0 and _cjk_share("拆批") == 1.0 and _cjk_share("WD0096 存檔") == 2 / 8
+    (tmp_path / "split.py").write_text(
+        "def split_lot():\n    # 拆批: 新增子批並扣母批數量\n    return 1\n\n"
+        "def lot_split_helper():\n    return 2\n", encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        layers = lambda q: {name for r in t.semantic_search(q, explain=True)["results"]  # noqa: E731
+                            for name in r["explanation"]["layers"]}
+        assert layers("拆批 子批") == {"keyword"}
+        assert "vector" in layers("lot split")
+    finally:
+        t.indexer.close()
+
+
 def test_ef_context_lookups_use_indexes(project):
     _, t = project
     plan = lambda sql: " ".join(r[3] for r in t.conn.execute("EXPLAIN QUERY PLAN " + sql, ("x",)))  # noqa: E731

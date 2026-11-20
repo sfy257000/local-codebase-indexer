@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 — 2026-11-20
+
+- Chinese (CJK) queries rank much better in hybrid search. The symbol-name and vector layers are scaled by the share of non-CJK characters in the query, so a Chinese query is ranked by the keyword layer with synonym expansion. On 20 paraphrased Chinese navigation questions in a private 3.4k-file C# project, hybrid MRR went from 0.48 to 0.84 and first-rank hits from 6 to 16; the synthetic, noisy and stdlib benchmark suites are unchanged.
+- Data-access `programs` and impact mark paths that reach a method only through an interface or base method with several implementations as `uncertain` (`interface dispatch, one of N implementations`). A single implementation stays `probable`; abstract declarations are not counted. On the same project, the programs left at `probable` for two tables were exactly the screens that write them, with shared-pipeline fan-out moved to `uncertain`.
+- Historical impact snapshots start from a copy of the current index and use the project's `.ai_context/ignore`, so only files whose content differs are parsed and the base revision honours the same exclusions (previously it also indexed files the project excludes). First runs on the same project: the latest commit (2 files changed) 3 min 38 s to 1 min 29 s; a commit on another branch whose snapshots differ from the working tree in 1,336 files 7 min 9 s to 4 min 8 s. Extracting the snapshot to disk is now most of the remaining time; later runs reuse the cache.
+- When a one-line class and its method share a search result span, the result is labelled with the innermost symbol (the method).
+- No index format change.
+
 ## 1.0.4 — 2026-11-20
 
 - The MCP server answers `initialize`, `ping` and `tools/list` without opening the index; the first `tools/call` opens it. Opening can take longer than a client's connection timeout when an upgrade adds indexes to a large existing database on a cold cache (Claude Code gives up after 30 s). A failure to open the index is reported as a tool error and the next call retries.

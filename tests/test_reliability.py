@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 
@@ -236,6 +237,47 @@ def test_impact_reuses_complete_historical_index(corpus, monkeypatch):
         return original(args, *a, **kw)
     monkeypatch.setattr(subprocess, 'run', no_archive)
     assert t.impact() == first
+
+
+def test_historical_index_parses_only_files_that_differ(corpus, monkeypatch):
+    from local_codebase_indexer.core import Indexer
+    root, t = corpus
+    git(root, 'init', '-q'); git(root, 'add', '.'); git(root, 'commit', '-qm', 'base')
+    repo = root / 'Repositories' / 'LotRepository.cs'
+    lines = repo.read_text(encoding='utf-8').split('\n')
+    lines[0] += ' // changed'  # a modified line, so the base revision is indexed too
+    repo.write_text('\n'.join(lines), encoding='utf-8')
+    parsed = []
+    original = Indexer._index_file
+    def counting(self, rel_path, *args):
+        parsed.append(rel_path)
+        return original(self, rel_path, *args)
+    monkeypatch.setattr(Indexer, '_index_file', counting)
+    result = t.impact()
+    # once for the working tree, once for the base snapshot; every other file is matched by content
+    assert parsed == ['Repositories/LotRepository.cs', 'Repositories/LotRepository.cs']
+    assert result['changed'] == [] or all(c['file_path'] == 'Repositories/LotRepository.cs' for c in result['changed'])
+
+
+def test_historical_index_uses_the_project_ignore_file(tmp_path):
+    (tmp_path / 'vendor').mkdir()
+    (tmp_path / 'vendor' / 'lib.py').write_text('def vendored():\n    return 0\n')
+    app = tmp_path / 'app.py'
+    app.write_text('def first():\n    return 1\n')
+    (tmp_path / '.ai_context').mkdir()
+    (tmp_path / '.ai_context' / 'ignore').write_text('vendor/\n')
+    git(tmp_path, 'init', '-q'); git(tmp_path, 'add', 'app.py', 'vendor'); git(tmp_path, 'commit', '-qm', 'base')
+    app.write_text('def first():\n    return 2\n')
+    t = CodebaseTools(str(tmp_path))
+    try:
+        result = t.impact()
+        assert [c['symbol'] for c in result['changed']] == ['first']
+        cache = next((tmp_path / '.ai_context' / 'impact').glob('*.db'))
+        old = sqlite3.connect(cache)
+        assert [r[0] for r in old.execute('SELECT file_path FROM files')] == ['app.py']
+        old.close()
+    finally:
+        t.indexer.close()
 
 
 def test_explicit_git_ranges_and_subdirectory_root(tmp_path):

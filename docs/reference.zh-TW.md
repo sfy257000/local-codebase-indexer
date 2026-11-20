@@ -156,3 +156,9 @@ local-codebase-indexer --root <專案> report dbo.Lot --output .ai_context/repor
 ```
 
 `init` 保留其他專案設定並拒絕覆蓋衝突；客戶端的信任核准仍依原本流程進行。HTML 報告可離線開啟，包含 SVG、原始碼位置、信心標籤與完整 JSON；也支援 `mermaid`／`json` 格式，覆寫既有報告須加 `--force`。MCP 與對應 CLI JSON 提供 `schema_version: 1`、`result_type`，並保留原有 MCP 文字。向量快取預設 128 MiB，設定 `INDEXER_VECTOR_CACHE_MB=0` 可停用；依索引版本失效，適用於長時間執行的程序，不會跨 CLI 程序共用。[API 契約、量測、客戶端證據與限制（英文）](v1-readiness.md)。
+
+## 1.1.0：中文排序、派送信心等級、加速影響分析
+
+- 混合搜尋依查詢中非 CJK 字元的比例調整符號名稱層與向量層的權重。中文詞不會出現在識別字裡，hashing 的中文雙字向量也很雜，所以純中文查詢改以關鍵字層（含同義詞擴展）排序；英文查詢不變，中英混合依比例調整。`--explain` 會顯示各層貢獻。
+- 資料存取的 `programs` 與影響分析中，只能經由「有多個實作的介面或基底方法」到達的路徑標為 `uncertain`（relation 為 `interface dispatch, one of N implementations`），因為執行時選哪個實作無法得知；只有一個實作時維持 `probable`。查資料存取時用 `--confidence probable` 可排除共用管線帶出的程式。抽象宣告不計為實作。
+- 影響分析的歷史快照改從目前索引的副本開始，並套用專案的 `.ai_context/ignore`；只有內容不同的檔案會重新解析。首次執行的主要成本是把快照解壓到磁碟，之後會重用快取。
