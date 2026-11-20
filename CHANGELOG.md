@@ -3,7 +3,8 @@
 ## 1.0.2 — 2026-11-20
 
 - Scanning no longer opens every indexed file to check for binary content. A file already indexed with an unchanged modification time is known to be text; new and modified files are still checked. On a 3.4k-file project this removed about 3,400 file opens from every status call and pre-query refresh (about 6 s each with a warm cache, much longer while antivirus scans cold files).
-- No index format change.
+- `status` consistency checks read indexes instead of whole tables: rowid sets are compared with `EXCEPT` over covering indexes, the full-text side uses the FTS5 `docsize` shadow table, and orphaned reference paths are found by index seeks over distinct paths. A new `idx_vss_rowid` index covers vector rowids. On a 420 MB index this cut the data a status call reads from about 460 MB to about 65 MB, which dominated a cold first call. Corruption outside an indexing run is still detected.
+- No index format change. The new vector index is created automatically the first time an existing index is opened (about 15 s on a 42k-chunk index).
 
 ## 1.0.1 — 2026-11-20
 

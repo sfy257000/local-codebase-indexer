@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS vss_chunks (
     rowid INTEGER PRIMARY KEY,
     chunk_embedding BLOB NOT NULL
 );
+-- Lets rowid-only scans (consistency checks) read this index instead of every vector.
+CREATE INDEX IF NOT EXISTS idx_vss_rowid ON vss_chunks(rowid);
 
 -- Keyword layer (FTS5) over chunk text; rowid == chunk_metadata.rowid
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(search_text, tokenize='unicode61');

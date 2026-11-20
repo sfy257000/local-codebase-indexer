@@ -267,6 +267,22 @@ def test_consistency_check_detects_corruption(project):
     assert t.index_status()["consistency"]["ok"]
 
 
+def test_consistency_check_detects_fts_and_reference_corruption(project):
+    _, t = project
+    t.conn.execute("DELETE FROM chunks_fts WHERE rowid=(SELECT MIN(rowid) FROM chunk_metadata)")
+    t.conn.execute("INSERT INTO raw_refs(file_path, kind, name, line) VALUES('gone.py', 'call', 'x', 1)")
+    t.conn.commit()
+    problems = t.index_status()["consistency"]["problems"]
+    assert "1 chunk_metadata rows without a full-text entry" in problems
+    assert "1 references of files that are not indexed" in problems
+
+
+def test_vector_rowid_scan_reads_the_index(project):
+    _, t = project
+    plan = [r[3] for r in t.conn.execute("EXPLAIN QUERY PLAN SELECT rowid FROM vss_chunks")]
+    assert plan == ["SCAN vss_chunks USING COVERING INDEX idx_vss_rowid"]
+
+
 def test_git_metadata_and_head_moved(tmp_path):
     (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     _git(tmp_path, "init", "-q")
