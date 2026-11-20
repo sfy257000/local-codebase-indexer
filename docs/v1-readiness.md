@@ -1,6 +1,6 @@
 # v1 readiness: implementation and evidence
 
-These Unreleased changes extend 0.9.1. They do not relabel an existing benchmark or publish a new package version.
+Version 1.0.0 adds the functionality described below. Measurements were recorded from the fixed pre-release source snapshots and retain their original package versions and source fingerprints.
 
 ## Implemented scope
 

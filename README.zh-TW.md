@@ -12,21 +12,17 @@
 
 ## 與 Claude 的 Grep 及類似工具比較
 
-以下為 0.9.1 的歷史量測；候選版本的新數據另見下方「尚未發布」段落。
-
-**在本專案的 MES 測試集，相關檔案召回率比 `rg + BM25` 高 9.5～10.7 個百分點。** 內建 SQL → C# → 頁面調查情境中，關係報告涵蓋 **5/5 個必要證據檔案**，單次表名字面搜尋為 **3/5**，涵蓋率 **60% → 100%（+40 個百分點）**。
+**在本專案的 MES 測試集，相關檔案召回率比 `rg + BM25` 高 9.5～13.1 個百分點。** 內建 SQL → C# → 頁面調查情境中，關係報告涵蓋 **5/5 個必要證據檔案**，單次表名字面搜尋為 **3/5**，涵蓋率 **60% → 100%（+40 個百分點）**。
 
 | 固定搜尋測試集 | `rg + BM25` 檔案 Recall@5 | 本專案 | 差異 |
 |---|---:|---:|---:|
-| MES 風格合成資料：42 題、24 個檔案 | 81.0% | **91.7%** | **+10.7 個百分點** |
+| MES 風格合成資料：42 題、24 個檔案 | 81.0% | **94.0%** | **+13.1 個百分點** |
 | 相同 42 題加入干擾來源：109 個檔案 | 81.0% | **90.5%** | **+9.5 個百分點** |
 | Python 標準函式庫：12 題、85 個真實原始碼檔案 | **100.0%** | 79.2% | −20.8 個百分點 |
 
-召回率是每題找回的已知相關檔案比例，再取平均。基準實際執行 ripgrep，以通用查詢拆詞及 BM25 排序，並非 Claude agent。本專案使用預設 hashing、取 5 個結果區塊；基準取 5 個檔案，雙方都以檔案計分。共 54 個由本專案編寫的不同題目（含重跑干擾集共 96 次），不代表通用準確率保證。
+召回率取 54 題專案自編題目的平均（含雜訊集重跑共 96 次）。本工具取 5 個程式區塊，`rg + BM25` 取 5 個檔案，雙方以檔案計分。這是固定案例比較，並非完整 Claude agent 流程的評測。
 
-**減少需要閱讀的原始碼：** 在含干擾的 MES 與標準函式庫測試集，搜尋結果文字比「完整讀取同一批選中檔案」少 **94.9%／96.9% 字元**；極小的合成檔案反而多 **2.3%**。這是相對於整檔讀取的輸出大小，並非相對 Grep 摘錄或 Claude token 的節省量。
-
-**較完整報告的成本：** demo CLI 暖查詢 **244.5 ms**，單次字面 `rg` 為 **8.3 ms**（各量測 3 次取中位數；本專案首次查詢含建索引為 **266.1 ms**）。提升在於多追到 Controller／頁面；速度較慢。Controller 路徑標為 `probable`，不代表執行期證明。尚未量測完整 Claude、Serena 或 Claude Context 流程。[方法與重跑命令](docs/tool-comparison.md) · [機器環境與彙總數據](benchmarks/tool-comparison.json) · [全部 96 筆逐題紀錄](benchmarks/tool-comparison-queries.jsonl)。
+關係報告比單次字面搜尋慢：範例中為 **228.5 ms 對 18.8 ms**（各 3 次中位數）。Controller 路徑標為 `probable`，不代表執行期證明。[方法](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline) · [原始數據](benchmarks/v1-tool-comparison.json) · [逐題紀錄](benchmarks/v1-tool-comparison-queries.jsonl)。
 
 **這個專案多提供的是 SQL → C# → 頁面的索引關係報告。** 在支援的程式模式中，一次 `data-access` 查詢就能列出直接／透過預存程序的存取、Controller Action、頁面與信心標籤。Claude 也能透過多輪 Grep 與讀檔追出關係；此工具把這段調查整理成可重複執行的 CLI／MCP 結果。
 
@@ -84,43 +80,16 @@ local-codebase-indexer --root "/path/to/project" data-access YourTable
 
 ## 接上 AI 助手
 
-安裝套件後，在 Claude Code 註冊：
+安裝套件後，依使用的用戶端選一個命令，建立專案內 MCP 設定：
 
 ```bash
-claude mcp add local-indexer -- local-codebase-indexer --root "/absolute/path/to/project" serve
+local-codebase-indexer --root "/absolute/path/to/project" init --client claude
+local-codebase-indexer --root "/absolute/path/to/project" init --client codex
 ```
 
 可以問：「哪些程式寫入 `YourTable`？哪些 Controller Action 與頁面會到達它？請列出路徑與信心等級。」必要時重新連線或重啟 MCP 用戶端。
 
 其他 stdio MCP 用戶端使用命令 `local-codebase-indexer`，參數依序為 `--root`、專案絕對路徑、`serve`。Codex／Copilot 可使用 CLI；[AGENTS.md](AGENTS.md) 有助手指引。[進階手冊](docs/reference.zh-TW.md) 包含 Claude Code plugin、七個 MCP 工具、ONNX 模型與設定。
-
-## 專案初始化與可分享報告（尚未發布）
-
-先在此分支執行 `python -m pip install -e .`，即可使用新增功能：
-
-```bash
-local-codebase-indexer --root "/path/to/project" init --client claude
-local-codebase-indexer --root "/path/to/project" init --client codex --no-index
-local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output .ai_context/reports/table.html
-local-codebase-indexer --root "/path/to/project" search "專案識別字" --mode lexical
-```
-
-SQL 物件保留資料庫／schema 的完整身分；短名稱有歧義時列出候選。證據鏈會說明 SQL／C# 深度截斷，MCP 也提供帶版本的結構化 JSON。HTML 報告可離線開啟，包含 SVG 關係圖、原始碼位置、信心標籤與完整證據。
-
-[HTML 報告範例](assets/impact-report.html) · [實作、API 契約、客戶端驗證與量測限制（英文）](docs/v1-readiness.md)。新增三個真實公開 C# 專案、100 題評測，含符號比對的整體 Recall@5 與 0.9.1 同為 **48.0%**，MRR 為 **0.3345 → 0.3283**。相同 100 題固定使用選配的 lexical 模式可達 **54.0%（+6 個百分點）**、MRR **0.3988**。這揭露一般自然語言搜尋的限制，並非獨立的正式環境準確率證明。
-
-另用你提供的 [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) 建立 12 題獨立列計的 Python 查詢：前五筆找到正確符號由 **7/12 → 8/12（+8.3 個百分點）**。暫存副本的索引、過期偵測、單檔更新與變更符號影響分析通過。[原始結果與限制](docs/v1-readiness.md#maintainer-supplied-project-acceptance)；這尚不能驗證正式 SQL 專案的影響分析。
-
-在產生的 10 萬個程式區塊測試中，程序內向量快取讓 5 次暖查詢樣本的 p95 由 **3.21 秒降至 1.74 秒（降低 45.8%）**，查詢程序峰值記憶體 **401.7 MiB**。這是單機特定測試結果，不能當成 CLI 啟動或正式專案的效能保證。[原始效能資料](benchmarks/performance-results.json)。
-
-此分支對 `rg + BM25` 的檔案召回率比較為：合成 MES **+13.1 個百分點**、加入雜訊 **+9.5 個百分點**，Python 標準函式庫 **−20.8 個百分點**。[本次結果與方法](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline)同時保留較差的情況。
-
-<details>
-<summary>預覽影響分析報告</summary>
-
-![預覽影響分析報告](assets/impact-report.png)
-
-</details>
 
 ## 其他維護問題
 
@@ -129,6 +98,7 @@ local-codebase-indexer --root "/path/to/project" relations OrderRepository.Appro
 local-codebase-indexer --root "/path/to/project" impact main...HEAD
 local-codebase-indexer --root "/path/to/project" search "order approval" --explain --limit 5
 local-codebase-indexer --root "/path/to/project" doctor
+local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output table-impact.html
 ```
 
 可查呼叫者、Git 版本間影響，以及結合識別字、文字與本機 embedding 的搜尋。C#、Python、JavaScript、TypeScript 支援符號解析；T-SQL 與 C# 另有資料存取分析。加上 `--json` 可取得結構化結果。

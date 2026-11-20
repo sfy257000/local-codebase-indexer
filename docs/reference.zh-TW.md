@@ -140,9 +140,9 @@ python -m pytest -q
 
 ## SQL、Unicode、VB6 與 Schema 更新
 
-[0.9.0 支援與升級說明](sql-legacy-support.md) 包含 SQL 修正、VB6 信心限制、獨立 schema 操作、Unicode 解碼及忽略清單覆寫。目前未發布版本會將舊索引重建為格式 11；詳見 [v1 實作與證據（英文）](v1-readiness.md)。
+[0.9.0 支援與升級說明](sql-legacy-support.md) 包含 SQL 修正、VB6 信心限制、獨立 schema 操作、Unicode 解碼及忽略清單覆寫。1.0.0 會將舊索引重建為格式 11；詳見 [v1 實作與證據（英文）](v1-readiness.md)。
 
-## 尚未發布：完整物件名稱、證據鏈與報告
+## 1.0.0：完整物件名稱、證據鏈與報告
 
 SQL 物件保留 server／database／schema／名稱及明確的 `USE` 上下文。短名稱有歧義時回傳 `ambiguous: true`、`found: false` 與完整 `candidates`，不合併為確定結果。無法確定命名範圍的存取列為 uncertain；名稱目前不區分大小寫。`coverage.warnings` 說明深度截斷與缺少 SQL 定義，證據鏈是代表路徑，不是所有可能執行路徑。
 

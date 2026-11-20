@@ -187,9 +187,9 @@ python -m pytest -q
 
 ## SQL, Unicode, VB6, and schema updates
 
-See [0.9.0 support and upgrade notes](sql-legacy-support.md) for SQL fixes, VB6 confidence limits, separate schema operations, Unicode decoding, and explicit default-directory overrides. Current Unreleased changes rebuild older indexes into format 11; see the [v1 implementation and evidence](v1-readiness.md).
+See [0.9.0 support and upgrade notes](sql-legacy-support.md) for SQL fixes, VB6 confidence limits, separate schema operations, Unicode decoding, and explicit default-directory overrides. Version 1.0.0 rebuilds older indexes into format 11; see the [v1 implementation and evidence](v1-readiness.md).
 
-## Unreleased: scoped objects, evidence paths, and reports
+## 1.0.0: scoped objects, evidence paths, and reports
 
 SQL identities retain server/database/schema/name and explicit `USE` context. An ambiguous short name returns `ambiguous: true`, `found: false`, and qualified `candidates`. Unqualified references with conflicting scopes remain uncertain; names are matched case-insensitively. `coverage.warnings` reports depth cutoffs and unavailable SQL definitions. Evidence paths are representative, not all possible execution paths.
 

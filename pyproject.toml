@@ -16,7 +16,7 @@ keywords = [
     "tree-sitter", "sqlite", "stored-procedure", "csharp", "dapper", "t-sql", "call-graph", "ai-coding-assistant",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
