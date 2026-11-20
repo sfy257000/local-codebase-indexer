@@ -56,12 +56,14 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
         if not hit:
             unmapped.append(path)
     own: list[dict] = []
+    lookup = dataflow._Lookup(tools.conn)
     for sid, c in changed.items():
-        own.extend({'source': c['symbol'], 'target': r['target_name'], 'access': r['access'],
-                    'op': r['op'], 'confidence': r['confidence'], 'file_path': r['file_path'],
-                    'line': r['line'], 'snapshot': snapshot, 'evidence': r['evidence'],
-                    'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(r))}
-                   for r in tools.conn.execute("SELECT * FROM data_access WHERE source_id=? AND via != 'ef_raw'", (sid,)))
+        for r, depth, chain, conf in dataflow.callee_accesses(tools.conn, lookup, sid):
+            own.append({'source': c['symbol'], 'target': r['target_name'], 'access': r['access'],
+                        'op': r['op'], 'confidence': conf, 'file_path': r['file_path'],
+                        'line': r['line'], 'snapshot': snapshot, 'evidence': r['evidence'],
+                        'depth': depth, 'via_chain': chain,
+                        'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(r))})
     # Scripts often have no containing symbol (ALTER/DROP TABLE, seed SQL).
     # Include their accesses by changed lines rather than losing them entirely.
     for path, spans in ranges.items():
@@ -70,10 +72,10 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
                 own.append({'source': path, 'target': row['target_name'], 'access': row['access'],
                             'op': row['op'], 'confidence': row['confidence'], 'file_path': path,
                             'line': row['line'], 'snapshot': snapshot, 'evidence': row['evidence'],
-                    'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(row))})
+                            'depth': 0, 'via_chain': [],
+                            'object_identity': dataflow.sqlidentity.display(dataflow.sqlidentity.from_row(row))})
     entries = [{'source_id': c['id'], 'source_type': c['type'], 'access': 'change', 'confidence': 'confirmed'}
                for c in changed.values()]
-    lookup = dataflow._Lookup(tools.conn)
     programs, roots = dataflow._programs(tools.conn, lookup, entries)
     for entry in programs + roots:
         entry['snapshot'] = snapshot

@@ -19,10 +19,13 @@ from .sqlaccess import _split_name, _unquote
 
 MAX_DEPTH = 4
 ENTRY_DEPTH = 8
+CALLEE_DEPTH = 4
 _METHOD_KINDS = ("method", "constructor", "function", "vb6_method")
 SQL_OBJECT_KINDS = ("table", "procedure", "view", "function")
 _SQL_DEFINITION = "file_path IN (SELECT file_path FROM files WHERE language='sql')"
 _CONF = {"confirmed": 0, "probable": 1, "uncertain": 2}
+_ANCESTOR_DEPTH = 12
+_TYPE_KINDS = ("class", "interface", "struct", "record")
 
 WRITE_WORDS = {
     "write", "writes", "written", "writing", "update", "updates", "modify", "modifies", "modifying", "insert",
@@ -129,15 +132,53 @@ class _Lookup:
         self._sym: dict[str, sqlite3.Row | None] = {}
         self.catalog = _Catalog(conn)
         self.warnings: list[dict] = []
+        self._bases: dict[str, list[str]] | None = None
+        self._type_rows: dict[str, list[sqlite3.Row]] = {}
 
     def symbol(self, sid: str | None):
         if not sid:
             return None
         if sid not in self._sym:
             self._sym[sid] = self.conn.execute(
-                "SELECT id, symbol_name, symbol_type, qualified_name, file_path, start_line, sql_identity FROM symbols WHERE id=?",
+                "SELECT id, symbol_name, symbol_type, qualified_name, file_path, start_line, sql_identity, parent_id "
+                "FROM symbols WHERE id=?",
                 (sid,)).fetchone()
         return self._sym[sid]
+
+    def ancestor_methods(self, sid: str) -> list[sqlite3.Row]:
+        """Same-named methods on every base class / interface above the class of method ``sid``."""
+        if self._bases is None:
+            self._bases = {}
+            for r in self.conn.execute("SELECT owner, name FROM raw_refs WHERE kind = 'base'"):
+                self._bases.setdefault(r[0], []).append(r[1])
+        sym = self.symbol(sid)
+        if sym is None or not sym["parent_id"]:
+            return []
+        out: list[sqlite3.Row] = []
+        seen = {sym["parent_id"]}
+        level = [sym["parent_id"]]
+        for _ in range(_ANCESTOR_DEPTH):
+            nxt = []
+            for owner in level:
+                for name in self._bases.get(owner, ()):
+                    for t in self._types(name):
+                        if t["id"] not in seen:
+                            seen.add(t["id"])
+                            nxt.append(t["id"])
+                            out.extend(self.conn.execute(
+                                "SELECT id, file_path, start_line, ? AS symbol_type FROM symbols "
+                                "WHERE symbol_name = ? AND parent_id = ?", (t["symbol_type"], sym["symbol_name"], t["id"])))
+            if not nxt:
+                break
+            level = nxt
+        return out
+
+    def _types(self, name: str) -> list[sqlite3.Row]:
+        if name not in self._type_rows:
+            self._type_rows[name] = self.conn.execute(
+                f"SELECT id, symbol_type FROM symbols WHERE symbol_name = ? AND symbol_type IN ({','.join('?' * len(_TYPE_KINDS))})",
+                (name, *_TYPE_KINDS)).fetchall()
+        return self._type_rows[name]
 
     def entry(self, row: sqlite3.Row, depth: int = 0, chain: list[str] | None = None) -> dict:
         s = self.symbol(row["source_id"])
@@ -254,6 +295,37 @@ def _touches(conn: sqlite3.Connection, lk: _Lookup, definitions: list[dict], max
             "executes": _sort(execs), "dynamic_sql": _sort(dynamic), "schema_changes": _sort(schema)}
 
 
+def callee_accesses(conn: sqlite3.Connection, lk: _Lookup, source_id: str,
+                    max_depth: int = CALLEE_DEPTH) -> list[tuple[sqlite3.Row, int, list[str], str]]:
+    """Data accesses of a method and of the methods it reaches through confirmed / probable calls:
+    (data_access row, call depth, callee chain, effective confidence)."""
+    out = []
+    seen = {source_id}
+    queue: deque = deque([(source_id, 0, [], "confirmed")])
+    while queue:
+        sid, depth, chain, conf = queue.popleft()
+        for r in conn.execute("SELECT * FROM data_access WHERE source_id=? AND via != 'ef_raw' ORDER BY line", (sid,)):
+            out.append((r, depth, chain, max(conf, r["confidence"], key=_CONF.__getitem__)))
+        callees = conn.execute(
+            "SELECT DISTINCT callee_id, confidence FROM calls WHERE caller_id=? AND confidence IN ('confirmed','probable')",
+            (sid,)).fetchall()
+        if depth >= max_depth:
+            if any(c["callee_id"] not in seen for c in callees):
+                lk.warnings.append({'code': 'callee_depth_limit', 'symbol': chain[-1] if chain else source_id,
+                                    'limit': max_depth})
+            continue
+        for c in callees:
+            if c["callee_id"] in seen:
+                continue
+            seen.add(c["callee_id"])
+            sym = lk.symbol(c["callee_id"])
+            if sym is None or sym["symbol_type"] not in _METHOD_KINDS:
+                continue
+            queue.append((c["callee_id"], depth + 1, chain + [sym["qualified_name"] or sym["symbol_name"]],
+                          max(conf, c["confidence"], key=_CONF.__getitem__)))
+    return out
+
+
 def _program(sym: sqlite3.Row) -> str | None:
     """Controller file label (``WD0096Controller.cs`` / ``WK0019.cs`` -> ``WD0096`` / ``WK0019``) for a method of a
     ``*Controller`` class, else None."""
@@ -302,11 +374,11 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict], call_d
         parents = [(r["caller_id"], max(conf, r["confidence"], key=_CONF.__getitem__), r["file_path"], r["line"], r["reason"]) for r in conn.execute(
             "SELECT caller_id, confidence, file_path, line, reason FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
             (sid,))]
-        # callers of the interface method this one implements may dispatch here (pipelines: foreach step.Run())
-        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__), r["file_path"], r["start_line"], "interface dispatch") for r in conn.execute(
-            "SELECT im.id, im.file_path, im.start_line FROM symbols m JOIN raw_refs b ON b.owner = m.parent_id AND b.kind = 'base' "
-            "JOIN symbols i ON i.symbol_name = b.name AND i.symbol_type = 'interface' "
-            "JOIN symbols im ON im.parent_id = i.id AND im.symbol_name = m.symbol_name WHERE m.id = ?", (sid,))]
+        # callers of the interface / base method this one implements or overrides may dispatch here
+        # (pipelines: foreach step.Run()), also when the interface is implemented by an abstract base class
+        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__), r["file_path"], r["start_line"],
+                     "interface dispatch" if r["symbol_type"] == "interface" else "override dispatch")
+                    for r in lk.ancestor_methods(sid)]
         if depth >= call_depth and parents:
             lk.warnings.append({'code': 'call_depth_limit', 'symbol': sym['qualified_name'], 'limit': call_depth})
             continue
