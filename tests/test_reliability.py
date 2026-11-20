@@ -263,3 +263,14 @@ def test_confidence_filter_preserves_default_summary(tmp_path):
         assert '... 3 more' not in render_data_access(result, full=True)
     finally:
         t.indexer.close()
+
+
+def test_scan_skips_binary_check_for_unchanged_indexed_files(tmp_path):
+    src = tmp_path / 'a.py'
+    src.write_bytes(b'x = 1\n')
+    mtime = src.stat().st_mtime_ns
+    src.write_bytes(b'\x00binary')
+    os.utime(src, ns=(mtime, mtime))
+    assert [f.rel_path for f in iter_files(str(tmp_path))] == []
+    assert [f.rel_path for f in iter_files(str(tmp_path), known={'a.py': mtime})] == ['a.py']
+    assert [f.rel_path for f in iter_files(str(tmp_path), known={'a.py': mtime - 1})] == []

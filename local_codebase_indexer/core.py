@@ -166,7 +166,7 @@ class Indexer:
         seen: set[str] = set()
         changed = False
 
-        for sf in iter_files(self.root):
+        for sf in iter_files(self.root, known={p: v[0] for p, v in existing.items()}):
             stats.scanned += 1
             if progress and (stats.scanned == 1 or stats.scanned % 100 == 0):
                 progress({'phase': 'scan', 'scanned': stats.scanned})

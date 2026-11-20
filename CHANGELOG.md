@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 — 2026-11-20
+
+- Scanning no longer opens every indexed file to check for binary content. A file already indexed with an unchanged modification time is known to be text; new and modified files are still checked. On a 3.4k-file project this removed about 3,400 file opens from every status call and pre-query refresh (about 6 s each with a warm cache, much longer while antivirus scans cold files).
+- No index format change.
+
 ## 1.0.1 — 2026-11-20
 
 - Program tracing follows interface methods implemented by abstract base classes: an override in a subclass is reached from callers of the interface or base method (`override dispatch`), so data-access `programs` and impact no longer report such pipeline steps as having no known caller.
