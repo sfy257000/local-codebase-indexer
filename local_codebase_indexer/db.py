@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS symbols (
 );
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(symbol_name);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path);
+CREATE INDEX IF NOT EXISTS idx_symbols_qualified ON symbols(qualified_name);
 
 -- 3. Dependency topology (file level)
 CREATE TABLE IF NOT EXISTS dependencies (
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS chunk_metadata (
     symbol_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_chunk_file ON chunk_metadata(file_path);
+CREATE INDEX IF NOT EXISTS idx_chunk_symbol ON chunk_metadata(symbol_id);
 
 -- 4. Vector storage. index.md names this vss_chunks (sqlite-vss); this
 -- implementation stores float32 BLOBs and does cosine search with numpy so no
