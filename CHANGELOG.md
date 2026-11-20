@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 — 2026-11-20
+
+- Program tracing follows interface methods implemented by abstract base classes: an override in a subclass is reached from callers of the interface or base method (`override dispatch`), so data-access `programs` and impact no longer report such pipeline steps as having no known caller.
+- Impact `tables` include accesses made by methods the changed code calls (confirmed / probable calls, up to 4 hops). Each entry carries `depth` and `via_chain`; a `callee_depth_limit` coverage warning marks a cutoff.
+- No index format change; existing indexes keep working.
+
 ## 1.0.0 — 2026-11-20
 
 - Simplify all three READMEs: remove development-stage notes, repeated benchmarks, and maintainer-specific acceptance narratives; retain practical setup/report commands and source-backed tool comparisons.

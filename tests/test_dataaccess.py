@@ -417,3 +417,62 @@ def test_impact_maps_a_diff_to_symbols_tables_programs_and_pages(tmp_path):
             t.impact("--output=x")
     finally:
         t.indexer.close()
+
+
+DEEP_FILES = {
+    "Steps.cs": '''namespace Acme {
+public interface IStep { void Process(int id); }
+public abstract class StepBase : IStep { public abstract void Process(int id); }
+public abstract class LotStepBase : StepBase { }
+public class WriteLot : LotStepBase { IDb _db;
+    public override void Process(int id) { _db.Execute("DELETE FROM MES_Deep WHERE Id = @id", new { id }); } }
+public class Other : IStep { public void Process(int id) { } }
+public class WipApp { IStep[] _steps;
+    public void Run(int id) { foreach (var s in _steps) s.Process(id); } }
+}
+''',
+    "WK0002Controller.cs": '''namespace Acme { public class WK0002Controller { WipApp _app;
+    public void Save(int id) { _app.Run(id); } } }
+''',
+}
+
+
+def test_programs_follow_interface_implemented_by_an_abstract_base(tmp_path):
+    for rel, content in DEEP_FILES.items():
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        res = t.data_access("MES_Deep")
+        assert [(p["program"], p["access"], p["actions"]) for p in res["programs"]] == [("WK0002", ["write"], ["Save"])]
+        assert res["no_known_caller"] == []
+    finally:
+        t.indexer.close()
+
+
+def test_impact_reports_tables_written_by_called_methods(tmp_path):
+    repo = tmp_path / "Repo.cs"
+    repo.write_text('''namespace Acme {
+public interface ILotRepo { int Remove(int id); }
+public class LotRepo : ILotRepo { IDb _db;
+    public int Remove(int id) { return _db.Execute("DELETE FROM MES_Callee WHERE Id = @id", new { id }); } }
+public class Adjuster { ILotRepo _repo;
+    public void Adjust(int id)
+    {
+        var x = id;
+    } }
+}
+''', encoding="utf-8")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    repo.write_text(repo.read_text(encoding="utf-8").replace("var x = id;", "_repo.Remove(id);"), encoding="utf-8")
+    t = CodebaseTools(str(tmp_path))
+    try:
+        res = t.impact()
+        assert [c["symbol"] for c in res["changed"]] == ["Acme.Adjuster.Adjust"]
+        callee = [x for x in res["tables"] if x["target"] == "MES_Callee"]
+        assert [(x["access"], x["op"], x["source"], x["depth"]) for x in callee] == [
+            ("write", "delete", "Acme.Adjuster.Adjust", 1)]
+        assert callee[0]["via_chain"] == ["Acme.LotRepo.Remove"]
+    finally:
+        t.indexer.close()
