@@ -612,23 +612,28 @@ class CodebaseTools(RelationTools, ContextTools):
         }
 
     def _consistency_problems(self) -> list[str]:
+        # Each check reads indexes only (rowid sets via EXCEPT, the FTS5 docsize shadow table, distinct raw_refs
+        # paths by index seeks), so a cold first status call does not read the whole database.
         c = self.conn
         one = lambda sql: c.execute(sql).fetchone()[0]  # noqa: E731
         checks = [
             ("chunk_metadata rows without a vector",
-             "SELECT COUNT(*) FROM chunk_metadata WHERE rowid NOT IN (SELECT rowid FROM vss_chunks)"),
+             "SELECT COUNT(*) FROM (SELECT rowid FROM chunk_metadata EXCEPT SELECT rowid FROM vss_chunks)"),
             ("vectors without chunk_metadata",
-             "SELECT COUNT(*) FROM vss_chunks WHERE rowid NOT IN (SELECT rowid FROM chunk_metadata)"),
+             "SELECT COUNT(*) FROM (SELECT rowid FROM vss_chunks EXCEPT SELECT rowid FROM chunk_metadata)"),
             ("chunk_metadata rows without a full-text entry",
-             "SELECT COUNT(*) FROM chunk_metadata WHERE rowid NOT IN (SELECT rowid FROM chunks_fts)"),
+             "SELECT COUNT(*) FROM (SELECT rowid FROM chunk_metadata EXCEPT SELECT id FROM chunks_fts_docsize)"),
             ("full-text entries without chunk_metadata",
-             "SELECT COUNT(*) FROM chunks_fts WHERE rowid NOT IN (SELECT rowid FROM chunk_metadata)"),
+             "SELECT COUNT(*) FROM (SELECT id FROM chunks_fts_docsize EXCEPT SELECT rowid FROM chunk_metadata)"),
             ("chunks of files that are not indexed",
              "SELECT COUNT(*) FROM chunk_metadata WHERE file_path NOT IN (SELECT file_path FROM files)"),
             ("symbols of files that are not indexed",
              "SELECT COUNT(*) FROM symbols WHERE file_path NOT IN (SELECT file_path FROM files)"),
             ("references of files that are not indexed",
-             "SELECT COUNT(*) FROM raw_refs WHERE file_path NOT IN (SELECT file_path FROM files)"),
+             "WITH RECURSIVE p(fp) AS (SELECT MIN(file_path) FROM raw_refs UNION ALL"
+             " SELECT (SELECT MIN(file_path) FROM raw_refs WHERE file_path > p.fp) FROM p WHERE p.fp IS NOT NULL)"
+             " SELECT COUNT(*) FROM raw_refs WHERE file_path IN"
+             " (SELECT fp FROM p WHERE fp IS NOT NULL EXCEPT SELECT file_path FROM files)"),
             ("dependencies pointing at files that are not indexed",
              "SELECT COUNT(*) FROM dependencies WHERE source_path NOT IN (SELECT file_path FROM files)"
              " OR target_path NOT IN (SELECT file_path FROM files)"),
