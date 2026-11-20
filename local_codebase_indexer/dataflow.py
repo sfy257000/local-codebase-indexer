@@ -134,6 +134,8 @@ class _Lookup:
         self.warnings: list[dict] = []
         self._bases: dict[str, list[str]] | None = None
         self._type_rows: dict[str, list[sqlite3.Row]] = {}
+        self._children: dict[str, list[str]] | None = None
+        self._impl_count: dict[tuple[str, str], int] = {}
 
     def symbol(self, sid: str | None):
         if not sid:
@@ -166,12 +168,46 @@ class _Lookup:
                             seen.add(t["id"])
                             nxt.append(t["id"])
                             out.extend(self.conn.execute(
-                                "SELECT id, file_path, start_line, ? AS symbol_type FROM symbols "
+                                "SELECT id, file_path, start_line, ? AS symbol_type, parent_id FROM symbols "
                                 "WHERE symbol_name = ? AND parent_id = ?", (t["symbol_type"], sym["symbol_name"], t["id"])))
             if not nxt:
                 break
             level = nxt
         return out
+
+    def implementations(self, type_id: str, method: str) -> int:
+        """Classes below ``type_id`` (any depth) that declare ``method``: how many targets a call can dispatch to."""
+        key = (type_id, method)
+        if key not in self._impl_count:
+            if self._children is None:
+                self._children = {}
+                for owner, names in (self._bases or {}).items():
+                    for name in names:
+                        self._children.setdefault(name, []).append(owner)
+            root = self.symbol(type_id)
+            seen: set[str] = set()
+            level = [root["symbol_name"]] if root else []
+            count = 0
+            for _ in range(_ANCESTOR_DEPTH):
+                nxt = []
+                for name in level:
+                    for child in self._children.get(name, ()):
+                        if child in seen:
+                            continue
+                        seen.add(child)
+                        row = self.symbol(child)
+                        if row is None:
+                            continue
+                        nxt.append(row["symbol_name"])
+                        if row["symbol_type"] != "interface" and any(
+                                not re.search(r"\babstract\b", sig or "") for (sig,) in self.conn.execute(
+                                    "SELECT signature FROM symbols WHERE symbol_name = ? AND parent_id = ?", (method, child))):
+                            count += 1  # abstract declarations have no body to dispatch to
+                if not nxt:
+                    break
+                level = nxt
+            self._impl_count[key] = count
+        return self._impl_count[key]
 
     def _types(self, name: str) -> list[sqlite3.Row]:
         if name not in self._type_rows:
@@ -375,10 +411,14 @@ def _programs(conn: sqlite3.Connection, lk: _Lookup, entries: list[dict], call_d
             "SELECT caller_id, confidence, file_path, line, reason FROM calls WHERE callee_id=? AND confidence IN ('confirmed','probable')",
             (sid,))]
         # callers of the interface / base method this one implements or overrides may dispatch here
-        # (pipelines: foreach step.Run()), also when the interface is implemented by an abstract base class
-        parents += [(r["id"], max(conf, "probable", key=_CONF.__getitem__), r["file_path"], r["start_line"],
-                     "interface dispatch" if r["symbol_type"] == "interface" else "override dispatch")
-                    for r in lk.ancestor_methods(sid)]
+        # (pipelines: foreach step.Run()), also when the interface is implemented by an abstract base class;
+        # with several implementations the runtime choice is unknown, so the path is only uncertain
+        for r in lk.ancestor_methods(sid):
+            impls = lk.implementations(r["parent_id"], sym["symbol_name"])
+            kind = "interface dispatch" if r["symbol_type"] == "interface" else "override dispatch"
+            edge = "probable" if impls <= 1 else "uncertain"
+            parents.append((r["id"], max(conf, edge, key=_CONF.__getitem__), r["file_path"], r["start_line"],
+                            kind if impls <= 1 else f"{kind}, one of {impls} implementations"))
         if depth >= call_depth and parents:
             lk.warnings.append({'code': 'call_depth_limit', 'symbol': sym['qualified_name'], 'limit': call_depth})
             continue

@@ -203,3 +203,9 @@ local-codebase-indexer --root <project> report dbo.Lot --output .ai_context/repo
 ```
 
 `init` preserves unrelated project configuration and rejects conflicts; client trust still requires the client's normal approval. HTML reports are offline, escaped, and include SVG, source locations, confidence and complete JSON evidence. Formats: `html`, `mermaid`, `json`; replacing an existing report requires `--force`. MCP and corresponding CLI JSON include `schema_version: 1` and `result_type`; legacy MCP text remains. A vector cache defaults to 128 MiB (`INDEXER_VECTOR_CACHE_MB=0` disables it) and follows index revisions. It benefits a long-lived process, not previous CLI invocations. [Contracts, benchmarks, client evidence and limitations](v1-readiness.md).
+
+## 1.1.0: CJK ranking, dispatch confidence, faster impact
+
+- Hybrid search scales the symbol-name and vector layers by the share of non-CJK characters in the query. CJK words never occur in identifiers and hashed CJK bigram vectors are noisy, so a Chinese query is ranked by the keyword layer (with synonym expansion); an English query is unchanged and a mixed query is scaled proportionally. `--explain` shows which layers contributed.
+- In data-access `programs` and impact, a path that reaches a method only through an interface or base method with several implementations is `uncertain` (relation `interface dispatch, one of N implementations`); the runtime choice is unknown. A single implementation stays `probable`. In data-access, `--confidence probable` drops such fan-out from a shared pipeline. Abstract declarations are not counted as implementations.
+- Historical impact snapshots start from a copy of the current index and use the project's `.ai_context/ignore`; only files whose content differs are parsed again. Extracting the snapshot to disk remains the main first-run cost; later runs reuse the cache.

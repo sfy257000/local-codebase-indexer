@@ -79,6 +79,12 @@ def _query_terms(query: str) -> list[str]:
     return out
 
 
+def _cjk_share(query: str) -> float:
+    """Share of the query's letters and digits that are CJK characters (0.0 for an English query)."""
+    words = len(re.findall(r"[A-Za-z0-9一-鿿]", query))
+    return len(re.findall(r"[一-鿿]", query)) / words if words else 0.0
+
+
 def _server_info() -> dict:
     """Version of the running code and whether its source changed on disk after it was loaded (a long-lived MCP
     server keeps running the old code until it is restarted)."""
@@ -245,13 +251,21 @@ class CodebaseTools(RelationTools, ContextTools):
                 top = np.argsort(-sims, kind='stable')
                 ranked["vector"] = [int(ids[i]) for i in top if sims[i] > 0]
 
+        # CJK words never occur in identifiers and hashed CJK bigram vectors are noisy, so for a CJK query the
+        # symbol and vector layers mostly rank synonym-expanded names; scale them down by the CJK share
+        weights = dict(LAYER_WEIGHTS)
+        share = _cjk_share(query)
+        for name in ("vector", "symbol"):
+            weights[name] *= 1 - share
         layer_scores: dict[int, dict] = {}
         fused: dict[int, float] = defaultdict(float)
         via: dict[int, list[str]] = defaultdict(list)
         for name, lst in ranked.items():
+            if not weights[name]:
+                continue
             for rank, rid in enumerate(lst, start=1):
                 rank = ranks_override.get(name, {}).get(rid, rank)
-                contribution = LAYER_WEIGHTS[name] / (RRF_K + rank)
+                contribution = weights[name] / (RRF_K + rank)
                 fused[rid] += contribution
                 if explain:
                     layer_scores.setdefault(rid, {})[name] = {'rank': rank, 'rrf_contribution': round(contribution, 8)}
@@ -324,6 +338,13 @@ class CodebaseTools(RelationTools, ContextTools):
             if span in seen_spans:
                 continue
             seen_spans.add(span)
+            # a one-line class and its method share a span: label it with the innermost symbol
+            inner = self.conn.execute(
+                "SELECT s.symbol_type, s.qualified_name, s.signature FROM chunk_metadata c JOIN symbols s ON s.id = c.symbol_id "
+                "WHERE c.file_path=? AND c.start_line=? AND c.end_line=? ORDER BY length(s.qualified_name) DESC LIMIT 1",
+                span).fetchone()
+            if inner is not None and (inner["qualified_name"] or "").startswith((row["qualified_name"] or "") + "."):
+                row = {**dict(row), **dict(inner)}
             snippet_lines = textwrap.dedent(row["raw_text"].rstrip()).split("\n")
             results.append({
                 "file_path": row["file_path"],

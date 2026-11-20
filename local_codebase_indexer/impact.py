@@ -16,6 +16,7 @@ from . import db as dbmod
 from .core import git
 from .embedder import HashingEmbedder
 from .locking import index_lock
+from .scanner import PROJECT_IGNORE_FILE
 
 _TYPES = {'class', 'interface', 'struct', 'record', 'enum', 'type', 'namespace'}
 
@@ -83,6 +84,25 @@ def _collect_unlocked(tools, ranges: dict, snapshot: str) -> dict:
             'programs': programs, 'no_known_caller': roots, 'coverage_warnings': lookup.warnings}
 
 
+def _match_unchanged_mtimes(tools, revision: str, snapshot: str) -> None:
+    """Give extracted files the indexed mtime when their content is known to be what the current index holds:
+    Git reports no difference between the revision and the working tree, and the index entry is fresh. The
+    snapshot update then skips them without reading them."""
+    differing = git(tools.root, 'diff', '--name-only', '--relative', '-z', '--no-renames', revision, timeout=60)
+    if differing is None:
+        return
+    skip = set(differing.split('\0'))
+    for rel, indexed in tools.conn.execute("SELECT file_path, last_modified FROM files"):
+        if rel in skip or os.path.isabs(rel):
+            continue
+        extracted = os.path.join(snapshot, rel)
+        try:
+            if os.stat(os.path.join(tools.root, rel)).st_mtime_ns == indexed and os.path.isfile(extracted):
+                os.utime(extracted, ns=(indexed, indexed))
+        except OSError:
+            continue
+
+
 def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "before") -> dict:
     from .query import CodebaseTools
     cache = os.path.join(tools.root, '.ai_context', 'impact', f'{revision}-{dbmod.INDEX_VERSION}-{__version__}.db')
@@ -118,6 +138,19 @@ def _historical(tools, revision: str, ranges: dict, snapshot_label: str = "befor
                         raise ValueError('Could not read a regular archive member')
                     with src, open(dest, 'wb') as dst:
                         shutil.copyfileobj(src, dst)
+        # Same exclusions as the current index (.ai_context is not in Git).
+        os.makedirs(os.path.join(snapshot, '.ai_context'))
+        ignore = os.path.join(tools.root, PROJECT_IGNORE_FILE)
+        if os.path.isfile(ignore):
+            shutil.copyfile(ignore, os.path.join(snapshot, PROJECT_IGNORE_FILE))
+        # Start from a copy of the current index so only files that differ are parsed again. A different embedder
+        # or index format still rebuilds.
+        seed_conn = sqlite3.connect(os.path.join(snapshot, '.ai_context', 'indexer.db'))
+        try:
+            tools.conn.backup(seed_conn)
+        finally:
+            seed_conn.close()
+        _match_unchanged_mtimes(tools, revision, snapshot)
         old = CodebaseTools(snapshot, embedder=HashingEmbedder())
         try:
             stats = old.refresh()
