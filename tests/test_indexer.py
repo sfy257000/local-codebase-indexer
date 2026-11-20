@@ -283,6 +283,26 @@ def test_vector_rowid_scan_reads_the_index(project):
     assert plan == ["SCAN vss_chunks USING COVERING INDEX idx_vss_rowid"]
 
 
+def test_ef_context_lookups_use_indexes(project):
+    _, t = project
+    plan = lambda sql: " ".join(r[3] for r in t.conn.execute("EXPLAIN QUERY PLAN " + sql, ("x",)))  # noqa: E731
+    assert "idx_chunk_symbol" in plan("SELECT raw_text FROM chunk_metadata WHERE symbol_id=?")
+    assert "idx_symbols_qualified" in plan("SELECT type_name FROM symbols WHERE qualified_name=?")
+
+
+def test_doctor_does_not_reopen_unchanged_indexed_files(project):
+    root, t = project
+    rel, mtime = t.conn.execute("SELECT file_path, last_modified FROM files ORDER BY file_path LIMIT 1").fetchone()
+    path = root / rel
+    path.write_bytes(b"\x00binary")
+    os.utime(path, ns=(mtime, mtime))
+    before = t.doctor()
+    assert "binary" not in before["counts"]
+    os.utime(path, ns=(mtime + 10**9, mtime + 10**9))
+    assert t.doctor()["counts"]["binary"] == 1
+    assert t.doctor()["eligible_files"] == before["eligible_files"] - 1
+
+
 def test_git_metadata_and_head_moved(tmp_path):
     (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     _git(tmp_path, "init", "-q")

@@ -548,7 +548,8 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
         for p in paths:
             file_types[p].add(name)
     used: dict[str, set[str]] = defaultdict(set)
-    for r in conn.execute("SELECT file_path, name FROM raw_refs WHERE kind IN ('ident', 'base')"):
+    # NOT INDEXED: these read most of raw_refs, and the (kind, name) index would add a table lookup per row
+    for r in conn.execute("SELECT file_path, name FROM raw_refs NOT INDEXED WHERE kind IN ('ident', 'base')"):
         used[r[0]].add(r[1])
 
     deps: set[tuple[str, str, str]] = set()
@@ -575,7 +576,7 @@ def resolve_dependencies(conn: sqlite3.Connection) -> None:
             if t != r[0]:
                 deps.add((r[0], t, "inheritance"))
 
-    for r in conn.execute("SELECT DISTINCT file_path, name FROM raw_refs WHERE kind='ident'"):
+    for r in conn.execute("SELECT DISTINCT file_path, name FROM raw_refs NOT INDEXED WHERE kind='ident'"):
         targets = type_files.get(r[1], set())
         if targets and len(targets) <= 5:
             for t in targets:

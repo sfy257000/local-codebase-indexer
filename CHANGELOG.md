@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 — 2026-11-20
+
+- Faster incremental updates. Resolving EF context types looked up method text and qualified names without an index, once per EF access in the whole project, on every update with changes. New `idx_chunk_symbol` and `idx_symbols_qualified` indexes make those lookups direct. File dependencies now read `raw_refs` with a table scan instead of an index plus a table lookup per row. On a 3.4k-file project, an update of 28 changed files went from 73 s to 23 s (EF resolution 49 s to 0.4 s, dependencies 6.9 s to 2.1 s); the dependency rows are identical.
+- `doctor` no longer reopens indexed files whose modification time is unchanged.
+- No index format change. The two indexes are created automatically the first time an existing index is opened.
+
 ## 1.0.2 — 2026-11-20
 
 - Scanning no longer opens every indexed file to check for binary content. A file already indexed with an unchanged modification time is known to be text; new and modified files are still checked. On a 3.4k-file project this removed about 3,400 file opens from every status call and pre-query refresh (about 6 s each with a warm cache, much longer while antivirus scans cold files).

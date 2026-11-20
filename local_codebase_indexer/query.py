@@ -503,7 +503,10 @@ class CodebaseTools(RelationTools, ContextTools):
     def doctor(self, path: str | None = None) -> dict:
         report = ScanReport()
         binary = unreadable = 0
-        for sf in iter_files(self.root, report=report):
+        known = {r[0]: r[1] for r in self.conn.execute("SELECT file_path, last_modified FROM files")}
+        for sf in iter_files(self.root, report=report, known=known):
+            if known.get(sf.rel_path) == sf.mtime_ns:
+                continue  # indexed and unchanged: readable text
             try:
                 with open(sf.abs_path, 'rb') as f:
                     if is_binary_data(f.read(8192)):
