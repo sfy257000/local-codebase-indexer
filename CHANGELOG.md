@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — 2026-11-20
+
+- Simplify all three READMEs: remove development-stage notes, repeated benchmarks, and maintainer-specific acceptance narratives; retain practical setup/report commands and source-backed tool comparisons.
 
 - Keep BOM-tagged UTF-16/UTF-32 SQL eligible in doctor, matching indexing/status; add separate maintainer-supplied Python workflow/retrieval acceptance.
 
@@ -13,7 +15,7 @@
 - Add 100 frozen navigation questions on three pinned public C# projects, baseline/candidate records, real-client transport evidence using a local mock model, and 10k/50k/100k scaling/update/Git-switch measurements. Preserve retrieval losses and limits on interpretation.
 - Extend Linux/Windows CI to Python 3.11, package the new tests/dependencies, check contracts, run public-code/performance smoke evaluations, and test Claude transport automatically. Codex native tool events are recorded from a manual transport run.
 - Synchronize English/Traditional Chinese/Simplified Chinese README and reference additions; correct obsolete JOIN and index-format guidance.
-- Index format 11 rebuilds older parsed data on the first update. Package/Registry versions remain unchanged while these changes are Unreleased.
+- Index format 11 rebuilds older parsed data on the first update. Package and MCP Registry versions are synchronized at 1.0.0.
 
 ## 0.9.1
 

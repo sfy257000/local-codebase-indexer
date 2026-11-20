@@ -95,7 +95,7 @@ Run `local-codebase-indexer demo` without a database or model. It uses a tempora
 - Index format 10 invalidates older parsed edges and rebuilds them on the first update. Keep package and Registry versions synchronized when preparing a release.
 - Tool comparisons live in `docs/tool-comparison.md`; keep language READMEs in sync, cite upstream capabilities, and distinguish a literal-search baseline from a full Claude workflow. Do not claim measured speed/token/accuracy superiority without a corresponding experiment.
 
-## Unreleased v1 preparation
+## SQL evidence and stable contracts (1.0.0)
 
 - Index format 11 preserves SQL identity as lossless JSON components. Keep the last-segment key only as an indexed lookup accelerator; never use it alone to identify an object or expand procedure dependencies. Ambiguous short names must not combine confirmed accessors.
 - C# symbol/SQL ownership uses AST byte ranges; same-line methods and overloads must remain separate. Symbol IDs are opaque revision-bound values.

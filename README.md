@@ -12,21 +12,17 @@ Trace tables and stored procedures to repositories, controller actions, and Razo
 
 ## How it compares with Claude's Grep and similar tools
 
-Recorded comparison for 0.9.1; new candidate measurements are linked in the Unreleased section below.
-
-**Measured on our MES fixtures: +9.5–10.7 percentage points in relevant-file recall versus `rg + BM25`.** For the bundled SQL → C# → page investigation, the relation report covers **5/5 required evidence files**, versus **3/5** from one literal table-name search (**+40 points**).
+**Measured on our MES fixtures: +9.5–13.1 percentage points in relevant-file recall versus `rg + BM25`.** For the bundled SQL → C# → page investigation, the relation report covers **5/5 required evidence files**, versus **3/5** from one literal table-name search (**+40 points**).
 
 | Fixed retrieval suite | `rg + BM25` file Recall@5 | This project | Difference |
 |---|---:|---:|---:|
-| MES-style synthetic: 42 questions, 24 files | 81.0% | **91.7%** | **+10.7 pp** |
+| MES-style synthetic: 42 questions, 24 files | 81.0% | **94.0%** | **+13.1 pp** |
 | Same 42 questions with distractors: 109 files | 81.0% | **90.5%** | **+9.5 pp** |
 | Python stdlib: 12 questions, 85 real source files | **100.0%** | 79.2% | −20.8 pp |
 
-Recall means the fraction of known relevant files retrieved, averaged over questions. The baseline runs real ripgrep with generic query-term splitting and BM25 ranking; it is not Claude's agent. This project uses default hashing and 5 result chunks; the baseline returns 5 files. Both are scored at file level. These are 54 unique, project-authored questions (96 executions including the repeated noisy suite), not a general accuracy guarantee.
+Recall is averaged over 54 project-authored questions (96 executions including the noisy rerun). The indexer returns 5 chunks; `rg + BM25` returns 5 files, and both are scored by file. This is a fixed-fixture comparison, not a complete Claude agent benchmark.
 
-**Less source to read:** on the noisy MES and stdlib suites, rendered search results contain **94.9% / 96.9% fewer characters** than reading the same selected files in full. Tiny synthetic files instead produce **2.3% more** characters. This measures output size against whole-file reading, not savings against Grep snippets or Claude tokens.
-
-**Cost of the richer report:** the demo CLI takes **244.5 ms** warm versus **8.3 ms** for one literal `rg` call (three-run medians; first indexer call **266.1 ms** including indexing). It adds controller/page evidence, not a speed win. The controller path is `probable`, not runtime proof. No end-to-end Claude, Serena, or Claude Context measurement was made. [Protocol and reproduction](docs/tool-comparison.md) · [machine/environment and summary](benchmarks/tool-comparison.json) · [all 96 query records](benchmarks/tool-comparison-queries.jsonl).
+The richer relation report is slower than a single literal search: **228.5 ms versus 18.8 ms** on the bundled scenario (three-run medians). Controller reachability is `probable`, not runtime proof. [Protocol](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline) · [Raw results](benchmarks/v1-tool-comparison.json) · [Per-query records](benchmarks/v1-tool-comparison-queries.jsonl).
 
 **The extra value is an indexed SQL → C# → page relation report.** For supported patterns, one `data-access` query returns direct/procedure-mediated access, controller actions, page links, and confidence labels. Claude can also follow these links through multiple Grep searches and file reads; this tool packages that investigation into a repeatable CLI/MCP result.
 
@@ -84,43 +80,16 @@ Replace the path and table name. The first query builds the index; subsequent qu
 
 ## Give the same evidence to your assistant
 
-For Claude Code, after installing the package:
+After installation, choose your client to create project-local MCP configuration:
 
 ```bash
-claude mcp add local-indexer -- local-codebase-indexer --root "/absolute/path/to/project" serve
+local-codebase-indexer --root "/absolute/path/to/project" init --client claude
+local-codebase-indexer --root "/absolute/path/to/project" init --client codex
 ```
 
 Ask: “Which code writes `YourTable`, and which controller actions and pages reach it? Show paths and confidence levels.” Restart/reconnect the MCP client if needed. For other stdio MCP clients, use command `local-codebase-indexer` and arguments `--root`, your absolute project path, `serve`.
 
 Codex / Copilot can use the CLI. [AGENTS.md](https://github.com/sfy257000/local-codebase-indexer/blob/main/AGENTS.md) contains assistant instructions. The [reference](https://github.com/sfy257000/local-codebase-indexer/blob/main/docs/reference.md) also covers the Claude Code plugin, seven MCP tools, ONNX models, aliases, and configuration.
-
-## Project setup and shareable reports (Unreleased)
-
-Install this checkout with `python -m pip install -e .` to use these additions:
-
-```bash
-local-codebase-indexer --root "/path/to/project" init --client claude
-local-codebase-indexer --root "/path/to/project" init --client codex --no-index
-local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output .ai_context/reports/table.html
-local-codebase-indexer --root "/path/to/project" search "project terminology" --mode lexical
-```
-
-Qualified SQL objects now retain separate database/schema identities. Ambiguous short names list candidates; bounded evidence paths explain SQL/C# call depth cutoffs. MCP also returns versioned structured JSON. HTML reports work offline and include an SVG graph, source locations, confidence, and full evidence.
-
-[Sample HTML report](assets/impact-report.html) · [implementation, API contracts, client checks, and measured limitations](docs/v1-readiness.md). The new 100-question evaluation uses three real public C# repositories: overall symbol-aware Recall@5 remains **48.0%** versus 0.9.1, with MRR **0.3345 → 0.3283**. Optional lexical mode reaches **54.0% (+6 percentage points)** and MRR **0.3988** across the same 100 questions. This exposes limits of general natural-language retrieval; it is not independent production-accuracy evidence.
-
-The maintainer-supplied [island-inline-watcher](https://github.com/sfy257000/island-inline-watcher) adds 12 separate source-reviewed Python questions: **7/12 → 8/12 correct symbols in the top five (+8.3 percentage points)**. Indexing, stale detection, one-file updates and changed-symbol impact passed in a disposable copy. [Raw results and limits](docs/v1-readiness.md#maintainer-supplied-project-acceptance); this does not validate production SQL impact.
-
-On the generated 100k-chunk scaling workload, in-process vector caching changes warm p95 from **3.21 s to 1.74 s (45.8% lower)** across five samples; the cached query worker peaks at **401.7 MiB**. These are machine-specific measurements, not CLI-startup or production-workload guarantees. [Raw scaling data](benchmarks/performance-results.json).
-
-The candidate file-level `rg + BM25` comparison measures **+13.1 pp** on synthetic MES, **+9.5 pp** with noise, and **−20.8 pp** on Python stdlib; [current results and protocol](docs/v1-readiness.md#candidate-versus-the-literal-search-baseline) keep the losses visible.
-
-<details>
-<summary>Preview the impact report</summary>
-
-![Preview the impact report](assets/impact-report.png)
-
-</details>
 
 ## More maintenance questions
 
@@ -129,6 +98,7 @@ local-codebase-indexer --root "/path/to/project" relations OrderRepository.Appro
 local-codebase-indexer --root "/path/to/project" impact main...HEAD
 local-codebase-indexer --root "/path/to/project" search "order approval" --explain --limit 5
 local-codebase-indexer --root "/path/to/project" doctor
+local-codebase-indexer --root "/path/to/project" report dbo.YourTable --output table-impact.html
 ```
 
 Relations show callers; impact compares Git snapshots; search combines identifiers, text, and local embeddings. C#, Python, JavaScript, and TypeScript have symbol parsing; T-SQL and C# have additional data-access analysis. Add `--json` for structured output.
